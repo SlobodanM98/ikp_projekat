@@ -1,49 +1,27 @@
 #include <ws2tcpip.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include "Struktura_clan.h"
+#include "Metode_mastera.h"
 
 #define DEFAULT_BUFLEN 512
 #define DEFAULT_PORT "10000"
 #define SERVER_SLEEP_TIME 1000
 #define SAFE_DELETE_HANDLE(a) if(a){CloseHandle(a);}
 
-bool InitializeWindowsSockets();
 
-typedef struct clan {
-	char ipAdresa[20];
-	int port;
-	struct clan *sledeci;
-}Clan;
-
-void Dodaj(Clan **glava, char *novaAdresa, int noviPort) {
-	Clan *novi;
-	novi = (Clan*)malloc(sizeof(Clan));
-	strcpy(novi->ipAdresa, novaAdresa);
-	novi->port = noviPort;
-	novi->sledeci = *glava;
-	*glava = novi;
-}
-
-int BrojClanova(Clan *glava) {
-	int broj = 0;
-	Clan *trenutni = glava;
-	while (trenutni != NULL) {
-		broj++;
-		trenutni = trenutni->sledeci;
-	}
-	return broj;
-}
 
 int  main(void)
 {
-	Clan *glava = NULL;
+	Clan *glava;
 	glava = (Clan*)malloc(sizeof(Clan));
 	if (glava == NULL) {
 		return 1;
 	}
 
-	glava->port = NULL;
-	glava->sledeci = NULL;
+	Inicijalizacija(&glava);
+	//glava->port = NULL;
+	//glava->sledeci = NULL;
 
 	bool praznaLista = true;
 	SOCKET listenSocket = INVALID_SOCKET;
@@ -111,20 +89,12 @@ int  main(void)
 	iResult = ioctlsocket(acceptedSocket, FIONBIO, &nonBlockingMode);
 	iResult = ioctlsocket(listenSocket, FIONBIO, &nonBlockingMode);
 
+	int random_brojac = 0;
+
 	do
 	{
 
-		FD_SET set;
-		timeval timeVal;
-
-		FD_ZERO(&set);
-
-		FD_SET(listenSocket, &set);
-
-		timeVal.tv_sec = 0;
-		timeVal.tv_usec = 0;
-
-		iResult = select(0, &set, NULL, NULL, &timeVal);
+		iResult = Selekt(&listenSocket);
 
 		if (iResult == SOCKET_ERROR)
 		{
@@ -149,30 +119,98 @@ int  main(void)
 			return 1;
 		}
 
+		bool primljeno = false;
+		bool klijent = false;
+
+		//Primanje flega da znamo da li je klijent(0) ili server(1)
+		do {
+
+			iResult = Selekt(&acceptedSocket);
+
+			if (iResult == SOCKET_ERROR)
+			{
+				fprintf(stderr, "select failed with error: %ld\n", WSAGetLastError());
+				continue;
+			}
+
+			if (iResult == 0)
+			{
+				printf("Ceka se odgovor sa serverom...\n");
+				Sleep(SERVER_SLEEP_TIME);
+				continue;
+			}
+
+			int fleg = 0;
+
+			iResult = recv(acceptedSocket, recvbuf, 4, 0);
+			if (iResult > 0) {
+				fleg = *(int*)recvbuf;
+				primljeno = true;
+				printf("Prikljucio se: %d\n", fleg);
+				//0 znaci da je klijent
+				if (fleg == 0) {
+					klijent = true;
+				}
+			}
+		} while (!primljeno);
+
 		int brojClanova = BrojClanova(glava);
 		int velicinaPoruke = 0;
 		char* poruka;
 
-		if (!praznaLista) {
-			bool praznaPoruka = true;
+		if (brojClanova <= random_brojac) {
+			random_brojac = 0;
+		}
 
-			Clan *temp = glava;
+		if (klijent == true) {
+			if (!praznaLista) {
+				bool praznaPoruka = true;
 
-			poruka = (char*)malloc(strlen(temp->ipAdresa) + sizeof(int));
+				Clan *temp = glava;
+				for (int i = 1; i <= random_brojac; i++) {
+					temp = glava->sledeci;
+				}
+				random_brojac++;
 
-			*(int*)poruka = temp->port;
+				poruka = (char*)malloc(strlen(temp->ipAdresa) + sizeof(int));
 
-			for (int i = 0; i < strlen(temp->ipAdresa); i++) {
-				*(poruka + 4 + i) = temp->ipAdresa[i];
+				*(int*)poruka = temp->port;
+
+				for (int i = 0; i < strlen(temp->ipAdresa); i++) {
+					*(poruka + 4 + i) = temp->ipAdresa[i];
+				}
+
+				velicinaPoruke += strlen(temp->ipAdresa) + sizeof(int);
 			}
-
-			velicinaPoruke += strlen(temp->ipAdresa) + sizeof(int);
+			else {
+				velicinaPoruke = 7;
+				poruka = (char*)malloc(velicinaPoruke);
+				strcpy(poruka, "prazno");
+			}
 		}
 		else {
-			velicinaPoruke = 7;
-			poruka = (char*)malloc(velicinaPoruke);
-			strcpy(poruka, "prazno");
+			if (!praznaLista) {
+				bool praznaPoruka = true;
+
+				Clan *temp = glava;
+
+				poruka = (char*)malloc(strlen(temp->ipAdresa) + sizeof(int));
+
+				*(int*)poruka = temp->port;
+
+				for (int i = 0; i < strlen(temp->ipAdresa); i++) {
+					*(poruka + 4 + i) = temp->ipAdresa[i];
+				}
+
+				velicinaPoruke += strlen(temp->ipAdresa) + sizeof(int);
+			}
+			else {
+				velicinaPoruke = 7;
+				poruka = (char*)malloc(velicinaPoruke);
+				strcpy(poruka, "prazno");
+			}
 		}
+
 
 		iResult = send(acceptedSocket, (char*)&velicinaPoruke, 4, 0);
 		iResult = send(acceptedSocket, poruka, velicinaPoruke, 0);
@@ -187,21 +225,15 @@ int  main(void)
 			return 1;
 		}
 
-		bool primljeno = false;
+		primljeno = false;
 
 		do {
+			//ako je klijent onda ne prima ip adresu i port
+			if (klijent == true) {
+				break;
+			}
 
-			FD_SET set;
-			timeval timeVal;
-
-			FD_ZERO(&set);
-
-			FD_SET(acceptedSocket, &set);
-
-			timeVal.tv_sec = 0;
-			timeVal.tv_usec = 0;
-
-			iResult = select(0, &set, NULL, NULL, &timeVal);
+			iResult = Selekt(&acceptedSocket);
 
 			if (iResult == SOCKET_ERROR)
 			{
@@ -238,7 +270,7 @@ int  main(void)
 					printf("Adresa je : %s\n", adresa);
 					primljeno = true;
 
-					if (glava->port == NULL) {
+					/*if (glava->port == NULL) {
 						strcpy(glava->ipAdresa, adresa);
 						glava->port = port;
 						praznaLista = false;
@@ -246,7 +278,9 @@ int  main(void)
 					else {
 						Dodaj(&glava, adresa, port);
 						praznaLista = false;
-					}
+					}*/
+					Dodaj(&glava, adresa, port);
+					praznaLista = false;
 
 					Clan *temp = glava;
 
@@ -278,13 +312,3 @@ int  main(void)
 	return 0;
 }
 
-bool InitializeWindowsSockets()
-{
-	WSADATA wsaData;
-	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
-	{
-		printf("WSAStartup failed with error: %d\n", WSAGetLastError());
-		return false;
-	}
-	return true;
-}

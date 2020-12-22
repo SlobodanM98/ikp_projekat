@@ -58,6 +58,17 @@ int  main(void)
 	unsigned long int nonBlockingMode = 1;
 	iResult = ioctlsocket(connectSocket, FIONBIO, &nonBlockingMode);
 
+	int poruka = 1;
+
+	iResult = send(connectSocket, (char*)&poruka, 4, 0);
+	if (iResult == SOCKET_ERROR)
+	{
+		printf("send failed with error: %d\n", WSAGetLastError());
+		closesocket(acceptedSocket);
+		WSACleanup();
+		return 1;
+	}
+
 	bool primljenaPoruka = false;
 
 	do {

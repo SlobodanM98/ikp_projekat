@@ -15,15 +15,12 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Master.cpp">
+    <ClCompile Include="Client.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Struktura_clan.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Metode_mastera.h">
+    <ClInclude Include="Metode_klijenta.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -102,7 +102,7 @@ int  main(void)
 
 		if (iResult == 0)
 		{
-			printf("Ceka se veza sa serverom...\n");
+			//printf("Ceka se veza sa serverom...\n");
 			Sleep(SERVER_SLEEP_TIME);
 			continue;
 		}

@@ -4,6 +4,7 @@
 #include "Metode_servera.h"
 #include "Kruzni_bafer.h"
 #include "Niti.h"
+#include "Struktura_Server_info.h"
 
 #define DEFAULT_BUFLEN 512
 #define MASTER_PORT 10000
@@ -12,18 +13,20 @@
 #define BUFFER_SIZE 512
 #pragma warning(disable:4996)
 
-
-typedef struct clan {
-	char *ipAdresa;
-	char *port;
-	struct clan *sledeci;
-}Clan;
-
-int portServera = 0;
-int portKlijenta = 0;
-
 int  main(void)
 {
+	int portServera = 0;
+	int portKlijenta = 0;
+	char adresa[20];
+
+	Server_info *glava;
+	glava = (Server_info*)malloc(sizeof(Server_info));
+	if (glava == NULL) {
+		return 1;
+	}
+
+	Inicijalizacija(&glava);
+
 	SOCKET listenSocketKlijenta = INVALID_SOCKET;
 	SOCKET listenSocketServera = INVALID_SOCKET;
 	SOCKET acceptedSocket = INVALID_SOCKET;
@@ -96,11 +99,9 @@ int  main(void)
 		if (iResult > 0)
 		{
 			int velicinaPoruke = *(int*)recvbuf;
-			printf("Velicina poruke je %d.\n", velicinaPoruke);
 			iResult = recv(connectSocket, recvbuf, velicinaPoruke, 0);
 			if (iResult > 0)
 			{
-				printf("Primljena poruka od master-a: %s.\n", recvbuf);
 				primljenaPoruka = true;
 
 				if (iResult > 7) {
@@ -115,8 +116,11 @@ int  main(void)
 						}
 						dobijenaAdresa[9] = '\0';
 
-						printf("Port %d je : %d\n", i, dobijenPort);
-						printf("Adresa %d je : %s\n", i, dobijenaAdresa);
+						HANDLE semafor = CreateSemaphore(0, 0, 1, NULL);
+						LPDWORD serverID = NULL;
+						HANDLE hServerKonekcija = NULL;
+
+						Dodaj(&glava, dobijenaAdresa, dobijenPort, semafor, serverID, hServerKonekcija);
 					}
 				}
 
@@ -175,7 +179,6 @@ int  main(void)
 
 				//Slanje poruke masteru
 				char* poruka;
-				char adresa[20];
 
 				int len = sizeof(myAddress);
 				getsockname(listenSocketServera, (sockaddr*)&myAddress, &len);
@@ -197,6 +200,7 @@ int  main(void)
 					*(poruka + 2 * 4 + i) = adresa[i];
 				}
 				*(poruka + 2 * 4 + strlen(adresa)) = '\0';
+				adresa[strlen(adresa)] = '\0';
 
 				iResult = send(connectSocket, (char*)&velicina, 4, 0);
 				iResult = send(connectSocket, poruka, velicina, 0);
@@ -225,8 +229,10 @@ int  main(void)
 
 	DWORD klijentID;
 	DWORD izvrsavanjeID;
+	DWORD serverID;
 	HANDLE hklijentkonekcija;
 	HANDLE hklijentIzvrsavanje;
+	HANDLE hServerKonekcija;
 
 	Parametri parametri;
 	parametri.listenSocket = &listenSocketKlijenta;
@@ -246,13 +252,54 @@ int  main(void)
 
 	hklijentIzvrsavanje = CreateThread(NULL, 0, &NitZaIzvrsavanjeZahtevaKlijenta, &parametri2, 0, &izvrsavanjeID);
 
+	Server_info *temp = glava;
+
+	printf("Lista :\n");
+	while (temp != NULL) {
+		printf("Adresa : %s\n", temp->ipAdresa);
+		printf("Port Servera : %d\n", temp->port);
+		printf("MessageBox : %s\n\n", temp->messageBox);
+
+		ParametriServer parametriServer;
+		strcpy(parametriServer.adresa, adresa);
+		parametriServer.port = portServera;
+		parametriServer.serverInfo = temp;
+		parametriServer.socket = NULL;
+
+		temp->hServerKonekcija = CreateThread(NULL, 0, &NitZaPrihvatanjeZahtevaServera, &parametriServer, 0, temp->serverID);
+
+		temp = temp->sledeci;
+	}
+
+	ParametriServer parametri3;
+	parametri3.socket = &listenSocketServera;
+	parametri3.serverInfo = glava;
+	strcpy(parametri3.adresa, adresa);
+	parametri3.port = portServera;
+
+	hServerKonekcija = CreateThread(NULL, 0, &NitZaOsluskivanjeServera, &parametri3, 0, &serverID);
+
+	temp = glava;
+
+	while (temp != NULL) {
+		WaitForSingleObject(temp->hServerKonekcija, INFINITE);
+		temp = temp->sledeci;
+	}
+
 	WaitForSingleObject(hklijentkonekcija, INFINITE);
 	WaitForSingleObject(hklijentIzvrsavanje, INFINITE);
+	WaitForSingleObject(hServerKonekcija, INFINITE);
 
-	//int liI = getchar();
+	temp = glava;
+
+	while (temp != NULL) {
+		CloseHandle(temp->hServerKonekcija);
+		temp = temp->sledeci;
+	}
 
 	CloseHandle(hklijentkonekcija);
 	CloseHandle(hklijentIzvrsavanje);
+	CloseHandle(hServerKonekcija);
 	SAFE_DELETE_HANDLE(Empty);
 	SAFE_DELETE_HANDLE(Full);
 

@@ -20,8 +20,6 @@ int  main(void)
 	}
 
 	Inicijalizacija(&glava);
-	//glava->port = NULL;
-	//glava->sledeci = NULL;
 
 	bool praznaLista = true;
 	SOCKET listenSocket = INVALID_SOCKET;
@@ -83,7 +81,7 @@ int  main(void)
 		return 1;
 	}
 
-	printf("Server initialized, waiting for clients.\n");
+	printf("Master initialized, waiting for clients.\n");
 
 	unsigned long int nonBlockingMode = 1;
 	iResult = ioctlsocket(acceptedSocket, FIONBIO, &nonBlockingMode);
@@ -174,7 +172,7 @@ int  main(void)
 
 				poruka = (char*)malloc(strlen(temp->ipAdresa) + sizeof(int));
 
-				*(int*)poruka = temp->port;
+				*(int*)poruka = temp->portKlijenta;
 
 				for (int i = 0; i < strlen(temp->ipAdresa); i++) {
 					*(poruka + 4 + i) = temp->ipAdresa[i];
@@ -187,22 +185,28 @@ int  main(void)
 				poruka = (char*)malloc(velicinaPoruke);
 				strcpy(poruka, "prazno");
 			}
-		}
+		}  //SERVER
 		else {
 			if (!praznaLista) {
 				bool praznaPoruka = true;
 
 				Clan *temp = glava;
 
-				poruka = (char*)malloc(strlen(temp->ipAdresa) + sizeof(int));
+				poruka = (char*)malloc(brojClanova * (strlen(temp->ipAdresa) + sizeof(int)));
 
-				*(int*)poruka = temp->port;
+				int velicinaElementa = strlen(temp->ipAdresa) + sizeof(int);
 
-				for (int i = 0; i < strlen(temp->ipAdresa); i++) {
-					*(poruka + 4 + i) = temp->ipAdresa[i];
+				for (int i = 0; i < brojClanova; i++) {
+
+					*((int*)(poruka + i * velicinaElementa))= temp->portServera;
+
+					for (int j = 0; j < strlen(temp->ipAdresa); j++) {
+						*((poruka + i * velicinaElementa) + 4 + j) = temp->ipAdresa[j];
+					}
+					temp = temp->sledeci;
 				}
 
-				velicinaPoruke += strlen(temp->ipAdresa) + sizeof(int);
+				velicinaPoruke += (brojClanova * (strlen("127.0.0.1") + sizeof(int)));
 			}
 			else {
 				velicinaPoruke = 7;
@@ -248,7 +252,7 @@ int  main(void)
 				continue;
 			}
 
-			int velicina = 0, port = 0;
+			int velicina = 0, portServera = 0, portKlijenta = 0;
 			char adresa[20];
 
 			iResult = recv(acceptedSocket, recvbuf, 4, 0);
@@ -259,27 +263,20 @@ int  main(void)
 				iResult = recv(acceptedSocket, recvbuf, velicina, 0);
 				if (iResult > 0) {
 					printf("Poruka je : %s\n", recvbuf);
-					port = *(int*)recvbuf;
+					portServera = *(int*)recvbuf;                //Port servera je prvi u recfbuf
+					portKlijenta = *((int*)(recvbuf + 4));
 					
-					for (int i = 0; i < velicina - 4; i++) {
-						adresa[i] = *(recvbuf + 4 + i);
+					for (int i = 0; i < velicina - 2 * 4; i++) {
+						adresa[i] = *(recvbuf + 2 * 4 + i);
 					}
-					adresa[velicina - 4] = '\0';
+					adresa[velicina - 2 * 4] = '\0';
 
-					printf("Port je : %d\n", port);
+					printf("Port servera je : %d\n", portServera);
+					printf("Port klijenta je : %d\n", portKlijenta);
 					printf("Adresa je : %s\n", adresa);
 					primljeno = true;
 
-					/*if (glava->port == NULL) {
-						strcpy(glava->ipAdresa, adresa);
-						glava->port = port;
-						praznaLista = false;
-					}
-					else {
-						Dodaj(&glava, adresa, port);
-						praznaLista = false;
-					}*/
-					Dodaj(&glava, adresa, port);
+					Dodaj(&glava, adresa, portServera, portKlijenta);
 					praznaLista = false;
 
 					Clan *temp = glava;
@@ -287,7 +284,8 @@ int  main(void)
 					printf("Lista :\n");
 					while (temp != NULL) {
 						printf("Adresa : %s\n", temp->ipAdresa);
-						printf("Port : %d\n\n", temp->port);
+						printf("Port Servera : %d\n", temp->portServera);
+						printf("Port Klijenta : %d\n\n", temp->portKlijenta);
 						temp = temp->sledeci;
 					}
 

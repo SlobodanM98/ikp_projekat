@@ -17,6 +17,7 @@ int main(void)
 	SOCKET listenSocket = INVALID_SOCKET;
 	SOCKET acceptedSocket = INVALID_SOCKET;
 	SOCKET connectSocket = INVALID_SOCKET;
+	SOCKET connectSocket2 = INVALID_SOCKET;
 
 	int iResult;
 	char recvbuf[DEFAULT_BUFLEN];
@@ -64,6 +65,7 @@ int main(void)
 
 
 	bool primljenaPoruka = false;
+	int dobijenPort = 0;
 
 	do {
 
@@ -94,7 +96,7 @@ int main(void)
 				primljenaPoruka = true;
 
 				if (iResult > 7) {
-					int dobijenPort = *(int*)recvbuf;
+					dobijenPort = *(int*)recvbuf;
 					char dobijenaAdresa[20];
 
 					for (int i = 0; i < velicinaPoruke - 4; i++) {
@@ -110,17 +112,48 @@ int main(void)
 		}
 		else if (iResult == 0)
 		{
-			printf("Connection with client closed.\n");
+			printf("Connection with master closed.\n");
 			closesocket(connectSocket);
 			break;
 		}
-	} while (!primljenaPoruka);
+	} while (!primljenaPoruka && dobijenPort == 0);
 
-	while (1) {
+	connectSocket2 = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
+	if (connectSocket2 == INVALID_SOCKET)
+	{
+		printf("socket failed with error: %ld\n", WSAGetLastError());
+		WSACleanup();
+		return 1;
 	}
 
+	serverAddress.sin_family = AF_INET;
+	serverAddress.sin_addr.s_addr = inet_addr("127.0.0.1");
+	serverAddress.sin_port = htons(dobijenPort);
+
+	if (connect(connectSocket2, (SOCKADDR*)&serverAddress, sizeof(serverAddress)) == SOCKET_ERROR)
+	{
+		printf("Unable to connect to server.\n");
+		int liI = getchar();
+		closesocket(connectSocket2);
+		WSACleanup();
+	}
+
+	char p[512];
+	strcpy(p, "Hello world");
+	iResult = send(connectSocket2, p, 512, 0);
+	if (iResult == SOCKET_ERROR)
+	{
+		printf("send failed with error: %d\n", WSAGetLastError());
+		closesocket(acceptedSocket);
+		WSACleanup();
+		return 1;
+	}
+
+	while(1) {}
+
 	closesocket(connectSocket);
+	closesocket(connectSocket2);
 	WSACleanup();
 
 	return 0;

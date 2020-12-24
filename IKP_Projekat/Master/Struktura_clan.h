@@ -3,7 +3,8 @@
 
 typedef struct clan {
 	char ipAdresa[20];
-	int port;
+	int portServera;
+	int portKlijenta;
 	struct clan *sledeci;
 }Clan;
 
@@ -11,11 +12,12 @@ void Inicijalizacija(Clan **head) {
 	*head = NULL;
 }
 
-void Dodaj(Clan **glava, char *novaAdresa, int noviPort) {
+void Dodaj(Clan **glava, char *novaAdresa, int noviPortServera, int noviPortKlijenta) {
 	Clan *novi;
 	novi = (Clan*)malloc(sizeof(Clan));
 	strcpy(novi->ipAdresa, novaAdresa);
-	novi->port = noviPort;
+	novi->portServera = noviPortServera;
+	novi->portKlijenta = noviPortKlijenta;
 	if (*glava == NULL) {
 		novi->sledeci = NULL;
 		*glava = novi;

@@ -1,6 +1,9 @@
 #include <ws2tcpip.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include "Metode_servera.h"
+#include "Kruzni_bafer.h"
+#include "Niti.h"
 
 #define DEFAULT_BUFLEN 512
 #define MASTER_PORT 10000
@@ -9,7 +12,6 @@
 #define BUFFER_SIZE 512
 #pragma warning(disable:4996)
 
-bool InitializeWindowsSockets();
 
 typedef struct clan {
 	char *ipAdresa;
@@ -17,11 +19,13 @@ typedef struct clan {
 	struct clan *sledeci;
 }Clan;
 
-int port = 0;
+int portServera = 0;
+int portKlijenta = 0;
 
 int  main(void)
 {
-	SOCKET listenSocket = INVALID_SOCKET;
+	SOCKET listenSocketKlijenta = INVALID_SOCKET;
+	SOCKET listenSocketServera = INVALID_SOCKET;
 	SOCKET acceptedSocket = INVALID_SOCKET;
 	SOCKET connectSocket = INVALID_SOCKET;
 
@@ -72,17 +76,8 @@ int  main(void)
 	bool primljenaPoruka = false;
 
 	do {
-		FD_SET set;
-		timeval timeVal;
 
-		FD_ZERO(&set);
-
-		FD_SET(connectSocket, &set);
-
-		timeVal.tv_sec = 0;
-		timeVal.tv_usec = 0;
-
-		iResult = select(0, &set, NULL, NULL, &timeVal);
+		iResult = Selekt(&connectSocket);
 
 		if (iResult == SOCKET_ERROR)
 		{
@@ -92,232 +87,181 @@ int  main(void)
 
 		if (iResult == 0)
 		{
-			printf("Ceka se master...\n");
+			printf("Ceka se odgovor master-a...\n");
 			Sleep(SERVER_SLEEP_TIME);
 			continue;
 		}
 
-		do {
-
-			FD_SET set;
-			timeval timeVal;
-
-			FD_ZERO(&set);
-
-			FD_SET(connectSocket, &set);
-
-			timeVal.tv_sec = 0;
-			timeVal.tv_usec = 0;
-
-			iResult = select(0, &set, NULL, NULL, &timeVal);
-
-			if (iResult == SOCKET_ERROR)
-			{
-				fprintf(stderr, "select failed with error: %ld\n", WSAGetLastError());
-				break;
-			}
-
-			if (iResult == 0)
-			{
-				printf("Ceka se odgovor master-a...\n");
-				Sleep(SERVER_SLEEP_TIME);
-				continue;
-			}
-
-			iResult = recv(connectSocket, recvbuf, 4, 0);
+		iResult = recv(connectSocket, recvbuf, 4, 0);
+		if (iResult > 0)
+		{
+			int velicinaPoruke = *(int*)recvbuf;
+			printf("Velicina poruke je %d.\n", velicinaPoruke);
+			iResult = recv(connectSocket, recvbuf, velicinaPoruke, 0);
 			if (iResult > 0)
 			{
-				int velicinaPoruke = *(int*)recvbuf;
-				printf("Velicina poruke je %d.\n", velicinaPoruke);
-				iResult = recv(connectSocket, recvbuf, velicinaPoruke, 0);
-				if (iResult > 0)
-				{
-					printf("Primljena poruka od master-a: %s.\n", recvbuf);
-					primljenaPoruka = true;
+				printf("Primljena poruka od master-a: %s.\n", recvbuf);
+				primljenaPoruka = true;
 
-					if (iResult > 7) {
-						int dobijenPort = *(int*)recvbuf;
-						char dobijenaAdresa[20];
+				if (iResult > 7) {
+					// 13 velicina jednog eleemnta
+					char dobijenaAdresa[20];
+					for (int i = 0; i < velicinaPoruke / 13; i++) {
+						int dobijenPort = *(int*)(recvbuf + i * 13);
 
-						for (int i = 0; i < velicinaPoruke - 4; i++) {
-							dobijenaAdresa[i] = *(recvbuf + 4 + i);
+
+						for (int j = 0; j < 9; j++) {
+							dobijenaAdresa[j] = *((recvbuf + i * 13) + 4 + j);
 						}
-						dobijenaAdresa[velicinaPoruke - 4] = '\0';
+						dobijenaAdresa[9] = '\0';
 
-						printf("Port je : %d\n", dobijenPort);
-						printf("Adresa je : %s\n", dobijenaAdresa);
+						printf("Port %d je : %d\n", i, dobijenPort);
+						printf("Adresa %d je : %s\n", i, dobijenaAdresa);
 					}
-
-					char* poruka;
-					char adresa[20];
-
-					int len = sizeof(myAddress);
-					getsockname(connectSocket, (sockaddr*)&myAddress, &len);
-					inet_ntop(AF_INET, &myAddress.sin_addr, adresa, sizeof(adresa));
-
-					port = ntohs(myAddress.sin_port);
-
-					int velicina = strlen(adresa) + sizeof(int);
-					poruka = (char*)malloc(velicina);
-					*(int*)poruka = port;
-
-					for (int i = 0; i < strlen(adresa); i++) {
-						*(poruka + 4 + i) = adresa[i];
-					}
-					*(poruka + 4 + strlen(adresa)) = '\0';
-
-					iResult = send(connectSocket, (char*)&velicina, 4, 0);
-					iResult = send(connectSocket, poruka, velicina, 0);
-
 				}
+
+				//Pravimo listenSocketKlijenta da bi ga poslali masteru
+				sockaddr_in service;
+				service.sin_family = AF_INET;
+				service.sin_addr.s_addr = inet_addr("127.0.0.1");
+				service.sin_port = htons(0);
+
+				listenSocketKlijenta = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+				if (listenSocketKlijenta == INVALID_SOCKET)
+				{
+					printf("socket failed with error: %ld\n", WSAGetLastError());
+					WSACleanup();
+					return 1;
+				}
+
+				iResult = bind(listenSocketKlijenta, (SOCKADDR *)&service, sizeof(service));
+				if (iResult == SOCKET_ERROR)
+				{
+					printf("bind failed with error: %d\n", WSAGetLastError());
+					closesocket(listenSocketKlijenta);
+					WSACleanup();
+					return 1;
+				}
+
+				unsigned long int nonBlockingMode = 1;
+				iResult = ioctlsocket(listenSocketKlijenta, FIONBIO, &nonBlockingMode);
+
+
+
+				//Pravimo listenSoketServera da bi ga poslali masteru
+				service.sin_port = htons(0);
+
+				listenSocketServera = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+				if (listenSocketServera == INVALID_SOCKET)
+				{
+					printf("socket failed with error: %ld\n", WSAGetLastError());
+					WSACleanup();
+					return 1;
+				}
+
+				iResult = bind(listenSocketServera, (SOCKADDR *)&service, sizeof(service));
+				if (iResult == SOCKET_ERROR)
+				{
+					printf("bind failed with error: %d\n", WSAGetLastError());
+					closesocket(listenSocketServera);
+					WSACleanup();
+					return 1;
+				}
+
+				nonBlockingMode = 1;
+				iResult = ioctlsocket(listenSocketServera, FIONBIO, &nonBlockingMode);
+
+				//Slanje poruke masteru
+				char* poruka;
+				char adresa[20];
+
+				int len = sizeof(myAddress);
+				getsockname(listenSocketServera, (sockaddr*)&myAddress, &len);
+				inet_ntop(AF_INET, &myAddress.sin_addr, adresa, sizeof(adresa));
+
+				portServera = ntohs(myAddress.sin_port);
+
+				getsockname(listenSocketKlijenta, (sockaddr*)&myAddress, &len);
+				inet_ntop(AF_INET, &myAddress.sin_addr, adresa, sizeof(adresa));
+
+				portKlijenta = ntohs(myAddress.sin_port);
+
+				int velicina = strlen(adresa) + 2 * sizeof(int);
+				poruka = (char*)malloc(velicina);
+				*(int*)poruka = portServera;
+				*((int*)(poruka + 4)) = portKlijenta;
+
+				for (int i = 0; i < strlen(adresa); i++) {
+					*(poruka + 2 * 4 + i) = adresa[i];
+				}
+				*(poruka + 2 * 4 + strlen(adresa)) = '\0';
+
+				iResult = send(connectSocket, (char*)&velicina, 4, 0);
+				iResult = send(connectSocket, poruka, velicina, 0);
+
 			}
-			else if (iResult == 0)
-			{
-				printf("Connection with client closed.\n");
-				closesocket(connectSocket);
-				break;
-			}
-		} while (!primljenaPoruka);
+		}
+		else if (iResult == 0)
+		{
+			printf("Connection with master closed.\n");
+			closesocket(connectSocket);
+			break;
+		}
 	} while (!primljenaPoruka);
 
 	closesocket(connectSocket);
 
-	addrinfo *resultingAddress = NULL;
-	addrinfo hints;
+	RingBuffer *ringBuffer = (RingBuffer*)malloc(sizeof(RingBuffer));;
+	ringBuffer->head = 0;
+	ringBuffer->tail = 0;
 
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_protocol = IPPROTO_TCP;
-	hints.ai_flags = AI_PASSIVE; 
+	CRITICAL_SECTION bufferAccess;
+	InitializeCriticalSection(&bufferAccess);
 
-	char stringPort[10];
-	itoa(port, stringPort, 10);
+	HANDLE Empty = CreateSemaphore(0, RING_SIZE, RING_SIZE, NULL);
+	HANDLE Full = CreateSemaphore(0, 0, RING_SIZE, NULL);
 
-	iResult = getaddrinfo(NULL, stringPort, &hints, &resultingAddress);
-	if (iResult != 0)
-	{
-		printf("getaddrinfo failed with error: %d\n", iResult);
-		WSACleanup();
-		return 1;
-	}
+	DWORD klijentID;
+	DWORD izvrsavanjeID;
+	HANDLE hklijentkonekcija;
+	HANDLE hklijentIzvrsavanje;
 
-	listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	Parametri parametri;
+	parametri.listenSocket = &listenSocketKlijenta;
+	parametri.ringBuffer = ringBuffer;
+	parametri.bufferAccess = &bufferAccess;
+	parametri.Empty = &Empty;
+	parametri.Full = &Full;
 
-	if (listenSocket == INVALID_SOCKET)
-	{
-		printf("socket failed with error: %ld\n", WSAGetLastError());
-		freeaddrinfo(resultingAddress);
-		WSACleanup();
-		return 1;
-	}
+	hklijentkonekcija = CreateThread(NULL, 0, &NitZaPrihvatanjeZahtevaKlijenta, &parametri, 0, &klijentID);
 
-	iResult = bind(listenSocket, resultingAddress->ai_addr, (int)resultingAddress->ai_addrlen);
-	if (iResult == SOCKET_ERROR)
-	{
-		printf("bind failed with error: %d\n", WSAGetLastError());
-		freeaddrinfo(resultingAddress);
-		closesocket(listenSocket);
-		WSACleanup();
-		return 1;
-	}
+	Parametri parametri2;
+	parametri2.listenSocket = NULL;
+	parametri2.ringBuffer = ringBuffer;
+	parametri2.bufferAccess = &bufferAccess;
+	parametri2.Empty = &Empty;
+	parametri2.Full = &Full;
 
-	freeaddrinfo(resultingAddress);
+	hklijentIzvrsavanje = CreateThread(NULL, 0, &NitZaIzvrsavanjeZahtevaKlijenta, &parametri2, 0, &izvrsavanjeID);
 
-	iResult = listen(listenSocket, SOMAXCONN);
-	if (iResult == SOCKET_ERROR)
-	{
-		printf("listen failed with error: %d\n", WSAGetLastError());
-		closesocket(listenSocket);
-		WSACleanup();
-		return 1;
-	}
+	WaitForSingleObject(hklijentkonekcija, INFINITE);
+	WaitForSingleObject(hklijentIzvrsavanje, INFINITE);
 
-	printf("Server initialized, waiting for clients.\n");
+	//int liI = getchar();
 
-	iResult = ioctlsocket(acceptedSocket, FIONBIO, &nonBlockingMode);
-	iResult = ioctlsocket(listenSocket, FIONBIO, &nonBlockingMode);
+	CloseHandle(hklijentkonekcija);
+	CloseHandle(hklijentIzvrsavanje);
+	SAFE_DELETE_HANDLE(Empty);
+	SAFE_DELETE_HANDLE(Full);
 
-	do
-	{
-		FD_SET set;
-		timeval timeVal;
+	DeleteCriticalSection(&bufferAccess);
 
-		FD_ZERO(&set);
-
-		FD_SET(listenSocket, &set);
-
-		timeVal.tv_sec = 0;
-		timeVal.tv_usec = 0;
-
-		iResult = select(0, &set, NULL, NULL, &timeVal);
-
-		if (iResult == SOCKET_ERROR)
-		{
-			fprintf(stderr, "select failed with error: %ld\n", WSAGetLastError());
-			continue;
-		}
-
-		if (iResult == 0)
-		{
-			printf("Ceka se veza sa klijentom...\n");
-			Sleep(SERVER_SLEEP_TIME);
-			continue;
-		}
-
-		acceptedSocket = accept(listenSocket, NULL, NULL);
-
-		if (acceptedSocket == INVALID_SOCKET)
-		{
-			printf("accept failed with error: %d\n", WSAGetLastError());
-			closesocket(listenSocket);
-			WSACleanup();
-			return 1;
-		}
-
-		do
-		{
-			iResult = recv(acceptedSocket, recvbuf, DEFAULT_BUFLEN, 0);
-			if (iResult > 0)
-			{
-				printf("Message received from client: %s.\n", recvbuf);
-			}
-			else if (iResult == 0)
-			{
-				printf("Connection with client closed.\n");
-				closesocket(acceptedSocket);
-			}
-			else
-			{
-				printf("recv failed with error: %d\n", WSAGetLastError());
-				closesocket(acceptedSocket);
-			}
-		} while (iResult > 0);
-	} while (1);
-
-	iResult = shutdown(acceptedSocket, SD_SEND);
-	if (iResult == SOCKET_ERROR)
-	{
-		printf("shutdown failed with error: %d\n", WSAGetLastError());
-		closesocket(acceptedSocket);
-		WSACleanup();
-		return 1;
-	}
-
-	closesocket(listenSocket);
+	closesocket(listenSocketKlijenta);
+	closesocket(listenSocketServera);
 	closesocket(acceptedSocket);
-	WSACleanup();
+	WSACleanup(); 
 
 	return 0;
-}
-
-bool InitializeWindowsSockets()
-{
-	WSADATA wsaData;
-	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
-	{
-		printf("WSAStartup failed with error: %d\n", WSAGetLastError());
-		return false;
-	}
-	return true;
 }

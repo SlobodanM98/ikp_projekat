@@ -179,6 +179,7 @@ int  main(void)
 				}
 
 				velicinaPoruke += strlen(temp->ipAdresa) + sizeof(int);
+				brojClanova = 0;
 			}
 			else {
 				velicinaPoruke = 7;
@@ -192,31 +193,38 @@ int  main(void)
 
 				Clan *temp = glava;
 
-				poruka = (char*)malloc(brojClanova * (strlen(temp->ipAdresa) + sizeof(int)));
+				int duzinaAdresa = DuzinaAdresa(glava);
+				poruka = (char*)malloc(duzinaAdresa + brojClanova * 2 * sizeof(int));
 
-				int velicinaElementa = strlen(temp->ipAdresa) + sizeof(int);
+				int velicinaElementa = 0;
 
 				for (int i = 0; i < brojClanova; i++) {
 
-					*((int*)(poruka + i * velicinaElementa))= temp->portServera;
+					*((int*)(poruka + velicinaElementa))= temp->portServera;
+					*((int*)(poruka + velicinaElementa + 4)) = strlen(temp->ipAdresa);
 
 					for (int j = 0; j < strlen(temp->ipAdresa); j++) {
-						*((poruka + i * velicinaElementa) + 4 + j) = temp->ipAdresa[j];
+						*((poruka + velicinaElementa) + 8 + j) = temp->ipAdresa[j];
 					}
+
+					velicinaPoruke += 2 * sizeof(int) + strlen(temp->ipAdresa);
+					velicinaElementa += strlen(temp->ipAdresa) + 2 * sizeof(int);
+
 					temp = temp->sledeci;
 				}
-
-				velicinaPoruke += (brojClanova * (strlen("127.0.0.1") + sizeof(int)));
 			}
 			else {
 				velicinaPoruke = 7;
+				brojClanova = 0;
 				poruka = (char*)malloc(velicinaPoruke);
 				strcpy(poruka, "prazno");
 			}
 		}
 
-
-		iResult = send(acceptedSocket, (char*)&velicinaPoruke, 4, 0);
+		char prvaPoruka[9];
+		*(int*)prvaPoruka = velicinaPoruke;
+		*(int*)(prvaPoruka + 4) = brojClanova;
+		iResult = send(acceptedSocket, prvaPoruka, 8, 0);
 		iResult = send(acceptedSocket, poruka, velicinaPoruke, 0);
 
 		free(poruka);

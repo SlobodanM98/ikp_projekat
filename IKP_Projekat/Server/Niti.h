@@ -288,6 +288,7 @@ DWORD WINAPI NitZaPrihvatanjeZahtevaKlijenta(LPVOID lpParam)
 	do
 	{
 		bool primljenZahtev = false;
+		int velicinaPoruke = 0;
 
 		iResult = Selekt(&listenSocket);
 
@@ -316,12 +317,46 @@ DWORD WINAPI NitZaPrihvatanjeZahtevaKlijenta(LPVOID lpParam)
 
 		do
 		{
-			iResult = recv(acceptedSocket, recvbuf, 512, 0);
+			iResult = Selekt(&acceptedSocket);
+
+			if (iResult == SOCKET_ERROR)
+			{
+				fprintf(stderr, "select failed with error: %ld\n", WSAGetLastError());
+				continue;
+			}
+
+			if (iResult == 0)
+			{
+				//printf("Ceka se veza sa klijentom...\n");
+				Sleep(1000);
+				continue;
+			}
+	
+			iResult = recv(acceptedSocket, recvbuf, 4, 0);
 			if (iResult > 0)
 			{
-				recvbuf[11] = '\0';
-				printf("Message received from client: %s.\n", recvbuf);
-				primljenZahtev = true;
+				velicinaPoruke = *(int*)recvbuf;
+				printf("**************************: %d\n", velicinaPoruke);
+				iResult = Selekt(&acceptedSocket);
+
+				if (iResult == SOCKET_ERROR)
+				{
+					fprintf(stderr, "select failed with error: %ld\n", WSAGetLastError());
+					continue;
+				}
+
+				if (iResult == 0)
+				{
+					//printf("Ceka se veza sa klijentom...\n");
+					Sleep(1000);
+					continue;
+				}
+				iResult = recv(acceptedSocket, recvbuf, velicinaPoruke, 0);
+				if (iResult > 0) {
+					primljenZahtev = true;
+					recvbuf[velicinaPoruke] = '\0';
+					printf("Message received from client: %s.\n", recvbuf);
+				}
 			}
 			else if (iResult == 0)
 			{
@@ -341,11 +376,16 @@ DWORD WINAPI NitZaPrihvatanjeZahtevaKlijenta(LPVOID lpParam)
 
 			EnterCriticalSection(bufferAccess);
 
-			ringBufPutChar(ringBuffer, recvbuf);
+			ringBufPutChar(ringBuffer, recvbuf, velicinaPoruke);
 
 			LeaveCriticalSection(bufferAccess);
 
 			//printf("****************************: %s\n", ringBufGetChar(ringBuffer));
+			int operacija = *((int*)recvbuf);
+			printf("****************************: %d\n", operacija);
+			char *p = recvbuf;
+			int dr = *((int*)p);
+			printf("****************************: %d\n", dr);
 
 			ReleaseSemaphore(*Full, 1, NULL);
 
@@ -374,10 +414,28 @@ DWORD WINAPI NitZaIzvrsavanjeZahtevaKlijenta(LPVOID lpParam)
 
 		EnterCriticalSection(bufferAccess);
 		// Citanje kruznog bafera;
-		char *zahtev = ringBufGetChar(ringBuffer);
+		char *zahtev;
+		zahtev = ringBufGetChar(ringBuffer);
 		LeaveCriticalSection(bufferAccess);
 		// Ispis na konzolu;
 		printf("\nIzvadjen zahtev iz buffera: %s\n", zahtev);
+
+		int operacija = *((int*)zahtev);
+		int duzinaImena = *(int*)(zahtev + 4);
+		int duzinaPrezimena = *(int*)(zahtev + 8);
+		int indeks = *(int*)(zahtev + 12);
+		char ime[20];
+		char prezime[20];
+		memcpy(ime, zahtev + 16, duzinaImena);
+		ime[duzinaImena] = '\0';
+		memcpy(prezime, zahtev + 16 + duzinaImena, duzinaPrezimena);
+		prezime[duzinaPrezimena] = '\0';
+
+		printf("\n***********************************: %d\n", operacija);
+		printf("-----------------------------------: %d\n", duzinaImena);
+		printf("++++++++++++++++++++++++++++++++++++: %d\n", duzinaPrezimena);
+		printf("++++++++++++++++++++++++++++++++++++: %s\n", ime);
+		printf("++++++++++++++++++++++++++++++++++++: %s\n", prezime);
 
 		// V(E) - operacija uvecava semafor E za jedan;
 		ReleaseSemaphore(*Empty, 1, NULL);

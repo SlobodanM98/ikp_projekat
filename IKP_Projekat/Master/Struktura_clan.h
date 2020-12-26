@@ -36,3 +36,13 @@ int BrojClanova(Clan *glava) {
 	}
 	return broj;
 }
+
+int DuzinaAdresa(Clan *glava) {
+	int broj = 0;
+	Clan *trenutni = glava;
+	while (trenutni != NULL) {
+		broj += strlen(trenutni->ipAdresa);
+		trenutni = trenutni->sledeci;
+	}
+	return broj;
+}

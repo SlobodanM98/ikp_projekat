@@ -1,7 +1,7 @@
 #pragma once
 
-#define RING_SIZE 5
-#define MESSAGEBOX_SIZE 20
+#define RING_SIZE 20
+#define MESSAGEBOX_SIZE (4 + 4 + 20 + 20 + 1)
 
 
 // Kruzni bafer - FIFO
@@ -15,9 +15,9 @@ char* ringBufGetChar(RingBuffer *apBuffer) {
 	int index;
 	index = apBuffer->head;
 	apBuffer->head = (apBuffer->head + 1) % RING_SIZE;
-	return apBuffer->data[index];
+	return &(apBuffer->data[index][0]);
 }
-void ringBufPutChar(RingBuffer *apBuffer, const char  *c) {
-	strcpy_s(apBuffer->data[apBuffer->tail], c);
+void ringBufPutChar(RingBuffer *apBuffer, const char  *c, int velicinaPoruke) {
+	memcpy(apBuffer->data[apBuffer->tail], c, velicinaPoruke);
 	apBuffer->tail = (apBuffer->tail + 1) % RING_SIZE;
 }

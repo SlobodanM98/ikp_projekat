@@ -95,32 +95,35 @@ int  main(void)
 			continue;
 		}
 
-		iResult = recv(connectSocket, recvbuf, 4, 0);
+		iResult = recv(connectSocket, recvbuf, 8, 0);
 		if (iResult > 0)
 		{
 			int velicinaPoruke = *(int*)recvbuf;
+			int brojElemenata = *(int*)(recvbuf + 4);
 			iResult = recv(connectSocket, recvbuf, velicinaPoruke, 0);
 			if (iResult > 0)
 			{
 				primljenaPoruka = true;
 
 				if (iResult > 7) {
-					// 13 velicina jednog eleemnta
 					char dobijenaAdresa[20];
-					for (int i = 0; i < velicinaPoruke / 13; i++) {
-						int dobijenPort = *(int*)(recvbuf + i * 13);
+					int duzinaElementa = 0;
+					for (int i = 0; i < brojElemenata; i++) {
+						int dobijenPort = *(int*)(recvbuf + duzinaElementa);
+						int duzinaAdrese = *(int*)(recvbuf + duzinaElementa + 4);
 
-
-						for (int j = 0; j < 9; j++) {
-							dobijenaAdresa[j] = *((recvbuf + i * 13) + 4 + j);
+						for (int j = 0; j < duzinaAdrese; j++) {
+							dobijenaAdresa[j] = *((recvbuf + duzinaElementa) + 8 + j);
 						}
-						dobijenaAdresa[9] = '\0';
+						dobijenaAdresa[duzinaAdrese] = '\0';
 
 						HANDLE semafor = CreateSemaphore(0, 0, 1, NULL);
 						LPDWORD serverID = NULL;
 						HANDLE hServerKonekcija = NULL;
 
 						Dodaj(&glava, dobijenaAdresa, dobijenPort, semafor, serverID, hServerKonekcija);
+
+						duzinaElementa += 2 * sizeof(int) + duzinaAdrese;
 					}
 				}
 

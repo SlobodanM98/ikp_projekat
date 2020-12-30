@@ -5,6 +5,7 @@
 #include "Kruzni_bafer.h"
 #include "Niti.h"
 #include "Struktura_Server_info.h"
+#include "Struktura_memorija.h"
 
 #define DEFAULT_BUFLEN 512
 #define MASTER_PORT 10000
@@ -26,6 +27,14 @@ int  main(void)
 	}
 
 	Inicijalizacija(&glava);
+
+	Memorija *glavaMemorije;
+	glavaMemorije = (Memorija*)malloc(sizeof(Memorija));
+	if (glavaMemorije == NULL) {
+		return 1;
+	}
+
+	Inicijalizacija(&glavaMemorije);
 
 	SOCKET listenSocketKlijenta = INVALID_SOCKET;
 	SOCKET listenSocketServera = INVALID_SOCKET;
@@ -117,11 +126,9 @@ int  main(void)
 						}
 						dobijenaAdresa[duzinaAdrese] = '\0';
 
-						HANDLE semafor = CreateSemaphore(0, 0, 1, NULL);
-						LPDWORD serverID = NULL;
-						HANDLE hServerKonekcija = NULL;
+						
 
-						Dodaj(&glava, dobijenaAdresa, dobijenPort, semafor, serverID, hServerKonekcija);
+						Dodaj(&glava, dobijenaAdresa, dobijenPort);
 
 						duzinaElementa += 2 * sizeof(int) + duzinaAdrese;
 					}
@@ -202,12 +209,11 @@ int  main(void)
 				for (int i = 0; i < strlen(adresa); i++) {
 					*(poruka + 2 * 4 + i) = adresa[i];
 				}
-				*(poruka + 2 * 4 + strlen(adresa)) = '\0';
 				adresa[strlen(adresa)] = '\0';
 
 				iResult = send(connectSocket, (char*)&velicina, 4, 0);
 				iResult = send(connectSocket, poruka, velicina, 0);
-
+				free(poruka);
 			}
 		}
 		else if (iResult == 0)
@@ -243,6 +249,8 @@ int  main(void)
 	parametri.bufferAccess = &bufferAccess;
 	parametri.Empty = &Empty;
 	parametri.Full = &Full;
+	parametri.serverInfo = NULL;
+	parametri.memorija = NULL;
 
 	hklijentkonekcija = CreateThread(NULL, 0, &NitZaPrihvatanjeZahtevaKlijenta, &parametri, 0, &klijentID);
 
@@ -252,6 +260,8 @@ int  main(void)
 	parametri2.bufferAccess = &bufferAccess;
 	parametri2.Empty = &Empty;
 	parametri2.Full = &Full;
+	parametri2.serverInfo = &glava;
+	parametri2.memorija = &glavaMemorije;
 
 	hklijentIzvrsavanje = CreateThread(NULL, 0, &NitZaIzvrsavanjeZahtevaKlijenta, &parametri2, 0, &izvrsavanjeID);
 
@@ -266,19 +276,23 @@ int  main(void)
 		ParametriServer parametriServer;
 		strcpy(parametriServer.adresa, adresa);
 		parametriServer.port = portServera;
-		parametriServer.serverInfo = temp;
+		parametriServer.serverInfo = &temp;
 		parametriServer.socket = NULL;
+		parametriServer.memorija = &glavaMemorije;
 
 		temp->hServerKonekcija = CreateThread(NULL, 0, &NitZaPrihvatanjeZahtevaServera, &parametriServer, 0, temp->serverID);
+
+		Sleep(100);
 
 		temp = temp->sledeci;
 	}
 
 	ParametriServer parametri3;
 	parametri3.socket = &listenSocketServera;
-	parametri3.serverInfo = glava;
+	parametri3.serverInfo = &glava;
 	strcpy(parametri3.adresa, adresa);
 	parametri3.port = portServera;
+	parametri3.memorija = &glavaMemorije;
 
 	hServerKonekcija = CreateThread(NULL, 0, &NitZaOsluskivanjeServera, &parametri3, 0, &serverID);
 

@@ -7,6 +7,7 @@ typedef struct server_info {
 	HANDLE primljenOdgovor;
 	LPDWORD serverID;
 	HANDLE hServerKonekcija;
+	SOCKET socket;
 	struct server_info *sledeci;
 }Server_info;
 
@@ -14,14 +15,19 @@ void Inicijalizacija(Server_info **head) {
 	*head = NULL;
 }
 
-void Dodaj(Server_info **glava, char *novaAdresa, int noviPort, HANDLE semafor, LPDWORD serverID, HANDLE hServerKonekcija) {
+void Dodaj(Server_info **glava, char *novaAdresa, int noviPort) {
 	Server_info *novi;
 	novi = (Server_info*)malloc(sizeof(Server_info));
 	strcpy(novi->ipAdresa, novaAdresa);
 	novi->port = noviPort;
-	novi->primljenOdgovor = semafor;
+
+	LPDWORD serverID = NULL;
+	HANDLE hServerKonekcija = NULL;
+
+	novi->primljenOdgovor = CreateSemaphore(0, 0, 1, NULL);
 	novi->serverID = serverID;
 	novi->hServerKonekcija = hServerKonekcija;
+	novi->socket = NULL;
 	if (*glava == NULL) {
 		novi->sledeci = NULL;
 		*glava = novi;

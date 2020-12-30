@@ -159,7 +159,7 @@ int main(void)
 		case 1:
 		{
 			printf("\nUnesiste indeks studenta: ");
-			scanf_s("%d", &indeks);
+			scanf("%d", &indeks);
 			printf("\nUnesiste ime studenta: ");
 			scanf("%s", ime);
 			printf("\nUnesiste prezime studenta: ");
@@ -237,6 +237,8 @@ int main(void)
 		WSACleanup();
 		return 1;
 	}
+
+	free(zahtev);
 
 	while(1) {}
 

@@ -32,5 +32,8 @@
     <ClInclude Include="Struktura_Server_info.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Struktura_memorija.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

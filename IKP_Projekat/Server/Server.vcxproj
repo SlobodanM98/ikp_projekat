@@ -131,6 +131,7 @@
     <ClInclude Include="Kruzni_bafer.h" />
     <ClInclude Include="Metode_servera.h" />
     <ClInclude Include="Niti.h" />
+    <ClInclude Include="Struktura_memorija.h" />
     <ClInclude Include="Struktura_Server_info.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

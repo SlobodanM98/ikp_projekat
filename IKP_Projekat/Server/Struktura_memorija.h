@@ -27,6 +27,40 @@ void Dodaj(Memorija **glava, char* ime, char* prezime, int indeks) {
 	*glava = novi;
 }
 
+void Obrisi(Memorija **glava, int indeks) {
+	Memorija *predhodni = *glava;
+	Memorija *temp = *glava;
+
+	if (temp != NULL && temp->indeks == indeks) {
+		*glava = temp->sledeci;
+		free(temp);
+		return;
+	}
+
+	while (temp != NULL && temp->indeks != indeks)
+	{
+		predhodni = temp;
+		temp = temp->sledeci;
+	}
+
+	if (temp == NULL)
+		return;
+
+	predhodni->sledeci = temp->sledeci;
+	free(temp);
+}
+
+void Izmeni(Memorija **glava, char* ime, char* prezime, int indeks) {
+	Memorija *temp = *glava;
+	while (temp != NULL) {
+		if (temp->indeks == indeks) {
+			strcpy(temp->ime, ime);
+			strcpy(temp->prezime, prezime);
+			return;
+		}
+	}
+}
+
 int BrojClanova(Memorija *glava) {
 	int broj = 0;
 	Memorija *trenutni = glava;

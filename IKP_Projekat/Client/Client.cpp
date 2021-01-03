@@ -1,6 +1,7 @@
 #include <ws2tcpip.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <conio.h>
 #include "Metode_klijenta.h"
 
 #define DEFAULT_BUFLEN 512
@@ -140,108 +141,112 @@ int main(void)
 		closesocket(connectSocket2);
 		WSACleanup();
 	}
-	int operacija = 0;
-	char ime[20];
-	ime[0] = '\0';
-	char prezime[20];
-	prezime[0] = '\0';
-	int indeks;
-	char *zahtev;
-	int duzinaZahteva = 0;
 
+	bool ugasi = false;
 	do {
-		printf("-------------------- MENU --------------------\n");
-		printf("1. Dodaj studenta\n");
-		printf("2. Obrisi studenta\n");
-		printf("3. Izmeni studenta\n");
-		scanf_s("%d", &operacija);
-		switch (operacija) {
-		case 1:
-		{
-			printf("\nUnesiste indeks studenta: ");
-			scanf("%d", &indeks);
-			printf("\nUnesiste ime studenta: ");
-			scanf("%s", ime);
-			printf("\nUnesiste prezime studenta: ");
-			scanf("%s", prezime);
+		int operacija = 0;
+		char ime[20];
+		ime[0] = '\0';
+		char prezime[20];
+		prezime[0] = '\0';
+		int indeks;
+		char *zahtev;
+		int duzinaZahteva = 0;
+
+		do {
+			printf("-------------------- MENU --------------------\n");
+			printf("1. Dodaj studenta\n");
+			printf("2. Obrisi studenta\n");
+			printf("3. Izmeni studenta\n");
+			printf("4. Ugasi klijenta\n");
+			scanf_s("%d", &operacija);
+			switch (operacija) {
+			case 1:
+			{
+				printf("\nUnesiste indeks studenta: ");
+				scanf("%d", &indeks);
+				printf("\nUnesiste ime studenta: ");
+				scanf("%s", ime);
+				printf("\nUnesiste prezime studenta: ");
+				scanf("%s", prezime);
+				break;
+			}
+			case 2:
+			{
+				printf("\nUnesiste indeks studenta: ");
+				scanf_s("%d", &indeks);
+				break;
+			}
+			case 3:
+			{
+				printf("\nUnesiste indeks studenta: ");
+				scanf_s("%d", &indeks);
+				printf("\nUnesiste ime studenta: ");
+				scanf("%s", ime);
+				printf("\nUnesiste prezime studenta: ");
+				scanf("%s", prezime);
+				break;
+			}
+			case 4:
+				ugasi = true;
+				break;
+			default:
+			{
+				operacija = 0;
+				break;
+			}
+			}
+		} while (operacija == 0);
+
+		if (ugasi == true) {
 			break;
 		}
-		case 2:
+
+		int duzinaImena = 0;
+		int duzinaPrezimena = 0;
+
+		if (ime[0] != '\0') {
+			duzinaImena = strlen(ime);
+		}
+		if (prezime[0] != '\0') {
+			duzinaPrezimena = strlen(prezime);
+		}
+		duzinaZahteva = duzinaImena + duzinaPrezimena + 4 * sizeof(int);
+		// Redosled: operacija(1,2,3), duzina imena, duzina prezimena, indeks, ime, prezime
+		zahtev = (char*)malloc(duzinaZahteva);
+		*(int*)zahtev = operacija;
+		*(int*)(zahtev + 4) = duzinaImena;
+		*(int*)(zahtev + 8) = duzinaPrezimena;
+		*(int*)(zahtev + 12) = indeks;
+		if (ime[0] != '\0') {
+			memcpy(zahtev + 16, ime, duzinaImena);
+		}
+		if (prezime[0] != '\0') {
+			memcpy(zahtev + 16 + duzinaImena, prezime, duzinaPrezimena);
+		}
+		//int duzinaZahteva = 11;
+		iResult = send(connectSocket2, (char *)&duzinaZahteva, 4, 0);
+		if (iResult == SOCKET_ERROR)
 		{
-			printf("\nUnesiste indeks studenta: ");
-			scanf_s("%d", &indeks);
-			break;
+			printf("send failed with error: %d\n", WSAGetLastError());
+			closesocket(acceptedSocket);
+			WSACleanup();
+			return 1;
 		}
-		case 3:
+		//char p[12] = "Hello World";
+		iResult = send(connectSocket2, zahtev, duzinaZahteva, 0);
+
+		if (iResult == SOCKET_ERROR)
 		{
-			printf("\nUnesiste indeks studenta: ");
-			scanf_s("%d", &indeks);
-			printf("\nUnesiste ime studenta: ");
-			scanf("%s", ime);
-			printf("\nUnesiste prezime studenta: ");
-			scanf("%s", prezime);
-			break;
+			printf("send failed with error: %d\n", WSAGetLastError());
+			closesocket(acceptedSocket);
+			WSACleanup();
+			return 1;
 		}
-		default:
-		{
-			operacija = 0;
-			break;
-		}
-		}
-	} while (operacija == 0);
 
-	int duzinaImena = 0;
-	int duzinaPrezimena = 0;
-
-	if (ime[0] != '\0') {
-		duzinaImena = strlen(ime);
-	}
-	if (prezime[0] != '\0') {
-		duzinaPrezimena = strlen(prezime);
-	}
-	/*printf("%s", strlen(prezime));
-	printf("%d", strlen(ime));
-
-	printf("uspesno");
-	while(1) {}*/
-
-	duzinaZahteva = duzinaImena + duzinaPrezimena + 4 * sizeof(int);
-	// Redosled: operacija(1,2,3), duzina imena, duzina prezimena, indeks, ime, prezime
-	zahtev = (char*)malloc(duzinaZahteva);
-	*(int*)zahtev = operacija;
-	*(int*)(zahtev + 4) = duzinaImena;
-	*(int*)(zahtev + 8) = duzinaPrezimena;
-	*(int*)(zahtev + 12) = indeks;
-	if (ime[0] != '\0') {
-		memcpy(zahtev + 16, ime, duzinaImena);
-	}
-	if (prezime[0] != '\0') {
-		memcpy(zahtev + 16 + duzinaImena, prezime, duzinaPrezimena);
-	}
-	//int duzinaZahteva = 11;
-	iResult = send(connectSocket2, (char *)&duzinaZahteva, 4, 0);
-	if (iResult == SOCKET_ERROR)
-	{
-		printf("send failed with error: %d\n", WSAGetLastError());
-		closesocket(acceptedSocket);
-		WSACleanup();
-		return 1;
-	}
-	//char p[12] = "Hello World";
-	iResult = send(connectSocket2, zahtev, duzinaZahteva, 0);
-
-	if (iResult == SOCKET_ERROR)
-	{
-		printf("send failed with error: %d\n", WSAGetLastError());
-		closesocket(acceptedSocket);
-		WSACleanup();
-		return 1;
-	}
-
-	free(zahtev);
-
-	while(1) {}
-
+		free(zahtev);
+	} while (true);
+	
 	closesocket(connectSocket);
 	closesocket(connectSocket2);
 	WSACleanup();

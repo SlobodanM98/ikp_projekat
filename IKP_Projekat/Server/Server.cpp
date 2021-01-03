@@ -1,6 +1,7 @@
 #include <ws2tcpip.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <conio.h>
 #include "Metode_servera.h"
 #include "Kruzni_bafer.h"
 #include "Niti.h"
@@ -19,6 +20,7 @@ int  main(void)
 	int portServera = 0;
 	int portKlijenta = 0;
 	char adresa[20];
+	bool ugasiServer = false;
 
 	Server_info *glava;
 	glava = (Server_info*)malloc(sizeof(Server_info));
@@ -235,6 +237,7 @@ int  main(void)
 
 	HANDLE Empty = CreateSemaphore(0, RING_SIZE, RING_SIZE, NULL);
 	HANDLE Full = CreateSemaphore(0, 0, RING_SIZE, NULL);
+	HANDLE FinishSignal = CreateSemaphore(0, 0, 2, NULL);
 
 	DWORD klijentID;
 	DWORD izvrsavanjeID;
@@ -249,8 +252,10 @@ int  main(void)
 	parametri.bufferAccess = &bufferAccess;
 	parametri.Empty = &Empty;
 	parametri.Full = &Full;
+	parametri.FinishSignal = &FinishSignal;
 	parametri.serverInfo = NULL;
 	parametri.memorija = NULL;
+	parametri.ugasiServer = &ugasiServer;
 
 	hklijentkonekcija = CreateThread(NULL, 0, &NitZaPrihvatanjeZahtevaKlijenta, &parametri, 0, &klijentID);
 
@@ -260,8 +265,10 @@ int  main(void)
 	parametri2.bufferAccess = &bufferAccess;
 	parametri2.Empty = &Empty;
 	parametri2.Full = &Full;
+	parametri2.FinishSignal = &FinishSignal;
 	parametri2.serverInfo = &glava;
 	parametri2.memorija = &glavaMemorije;
+	parametri2.ugasiServer = &ugasiServer;
 
 	hklijentIzvrsavanje = CreateThread(NULL, 0, &NitZaIzvrsavanjeZahtevaKlijenta, &parametri2, 0, &izvrsavanjeID);
 
@@ -279,6 +286,7 @@ int  main(void)
 		parametriServer.serverInfo = &temp;
 		parametriServer.socket = NULL;
 		parametriServer.memorija = &glavaMemorije;
+		parametriServer.ugasiServer = &ugasiServer;
 
 		temp->hServerKonekcija = CreateThread(NULL, 0, &NitZaPrihvatanjeZahtevaServera, &parametriServer, 0, temp->serverID);
 
@@ -293,6 +301,7 @@ int  main(void)
 	strcpy(parametri3.adresa, adresa);
 	parametri3.port = portServera;
 	parametri3.memorija = &glavaMemorije;
+	parametri3.ugasiServer = &ugasiServer;
 
 	hServerKonekcija = CreateThread(NULL, 0, &NitZaOsluskivanjeServera, &parametri3, 0, &serverID);
 
@@ -313,7 +322,7 @@ int  main(void)
 		CloseHandle(temp->hServerKonekcija);
 		temp = temp->sledeci;
 	}
-
+	_getch();
 	CloseHandle(hklijentkonekcija);
 	CloseHandle(hklijentIzvrsavanje);
 	CloseHandle(hServerKonekcija);

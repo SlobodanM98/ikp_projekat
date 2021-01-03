@@ -156,17 +156,18 @@ int  main(void)
 		int velicinaPoruke = 0;
 		char* poruka;
 
-		if (brojClanova <= random_brojac) {
-			random_brojac = 0;
-		}
 
 		if (klijent == true) {
 			if (!praznaLista) {
 				bool praznaPoruka = true;
 
 				Clan *temp = glava;
-				for (int i = 1; i <= random_brojac; i++) {
-					temp = glava->sledeci;
+
+				if (brojClanova <= random_brojac) {
+					random_brojac = 0;
+				}
+				for (int i = 0; i < (brojClanova - random_brojac - 1); i++) {
+					temp = temp->sledeci;
 				}
 				random_brojac++;
 

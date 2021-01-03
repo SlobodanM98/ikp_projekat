@@ -9,8 +9,10 @@ struct Parametri {
 	CRITICAL_SECTION *bufferAccess;
 	HANDLE *Empty;
 	HANDLE *Full;
+	HANDLE *FinishSignal;
 	Server_info **serverInfo;
 	Memorija **memorija;
+	bool *ugasiServer;
 };
 
 struct ParametriServer {
@@ -19,6 +21,7 @@ struct ParametriServer {
 	Memorija **memorija;
 	int port;
 	char adresa[20];
+	bool *ugasiServer;
 };
 
 DWORD WINAPI NitZaPrihvatanjeZahtevaServera(LPVOID lpParam) {
@@ -168,6 +171,12 @@ DWORD WINAPI NitZaPrihvatanjeZahtevaServera(LPVOID lpParam) {
 						if (strcmp(operacija, "upis") == 0) {
 							Dodaj(&(*(parametri.memorija)), ime, prezime, indeks);
 						}
+						else if (strcmp(operacija, "brisanje") == 0) {
+							Obrisi(&(*(parametri.memorija)), indeks);
+						}
+						else if (strcmp(operacija, "izmena") == 0) {
+							Izmeni(&(*(parametri.memorija)), ime, prezime, indeks);
+						}
 
 						Memorija *memTemp = *(parametri.memorija);
 
@@ -215,10 +224,9 @@ DWORD WINAPI NitZaPrihvatanjeZahtevaServera(LPVOID lpParam) {
 			closesocket(connectSocket);
 			break;
 		}
-	} while (1);
-
+	} while (*(parametri.ugasiServer) != true);
+	printf("\nUgasena nit: NitZaPrihvatanjeZahtevaServera\n");
 	closesocket(connectSocket);
-	WSACleanup();
 
 	return 0;
 }
@@ -341,16 +349,18 @@ DWORD WINAPI NitZaOsluskivanjeServera(LPVOID lpParam) {
 			parametriServer.serverInfo = &(*(parametri.serverInfo));
 			parametriServer.socket = NULL;
 			parametriServer.memorija = &(*(parametri.memorija));
+			parametriServer.ugasiServer = parametri.ugasiServer;
 
 			printf("Drugi server se povezao sa mnom!\n");
 
 			(*parametri.serverInfo)->hServerKonekcija = CreateThread(NULL, 0, &NitZaPrihvatanjeZahtevaServera, &parametriServer, 0, (*parametri.serverInfo)->serverID);
 		}
 
-	} while (1);
+	} while (*(parametri.ugasiServer) != true);
 
+	printf("\nUgasena nit: NitZaOsluskivanjeServera\n");
 	closesocket(listenSocket);
-	WSACleanup();
+	//WSACleanup();
 
 	return 0;
 }
@@ -369,6 +379,7 @@ DWORD WINAPI NitZaPrihvatanjeZahtevaKlijenta(LPVOID lpParam)
 	CRITICAL_SECTION *bufferAccess = parametri.bufferAccess;
 	HANDLE *Empty = parametri.Empty;
 	HANDLE *Full = parametri.Full;
+	HANDLE *FinishSignal = parametri.FinishSignal;
 
 	unsigned long int nonBlockingMode = 1;
 	iResult = ioctlsocket(acceptedSocket, FIONBIO, &nonBlockingMode);
@@ -384,9 +395,10 @@ DWORD WINAPI NitZaPrihvatanjeZahtevaKlijenta(LPVOID lpParam)
 
 	printf("Server initialized, waiting for clients.\n");
 
+
 	do
 	{
-		bool primljenZahtev = false;
+		bool konekcijaZatvorena = false;
 		int velicinaPoruke = 0;
 
 		iResult = Selekt(&listenSocket);
@@ -399,6 +411,13 @@ DWORD WINAPI NitZaPrihvatanjeZahtevaKlijenta(LPVOID lpParam)
 
 		if (iResult == 0)
 		{
+			if (_kbhit()) {
+				char c = _getch();
+				if (c == 'q') {
+					*(parametri.ugasiServer) = true;
+					ReleaseSemaphore(*FinishSignal, 2, NULL);
+				}
+			}
 			//printf("Ceka se veza sa klijentom...\n");
 			Sleep(1000);
 			continue;
@@ -426,11 +445,19 @@ DWORD WINAPI NitZaPrihvatanjeZahtevaKlijenta(LPVOID lpParam)
 
 			if (iResult == 0)
 			{
+				if (_kbhit()) {
+					char c = _getch();
+					if (c == 'q') {
+						*(parametri.ugasiServer) = true;
+						ReleaseSemaphore(*FinishSignal, 2, NULL);
+					}
+				}
 				//printf("Ceka se veza sa klijentom...\n");
 				Sleep(1000);
 				continue;
 			}
-	
+			
+			iResult = 1;
 			iResult = recv(acceptedSocket, recvbuf, 4, 0);
 			if (iResult > 0)
 			{
@@ -452,14 +479,40 @@ DWORD WINAPI NitZaPrihvatanjeZahtevaKlijenta(LPVOID lpParam)
 				}
 				iResult = recv(acceptedSocket, recvbuf, velicinaPoruke, 0);
 				if (iResult > 0) {
-					primljenZahtev = true;
 					recvbuf[velicinaPoruke] = '\0';
 					printf("Message received from client: %s.\n", recvbuf);
+
+
+					const int semaphore_num = 2;
+					HANDLE semaphores[semaphore_num] = { *FinishSignal, *Empty };
+
+					while (WaitForMultipleObjects(semaphore_num, semaphores, FALSE, INFINITE) == WAIT_OBJECT_0 + 1) {
+					//while (WaitForSingleObject(*Empty, INFINITE) == WAIT_OBJECT_0) {
+
+
+						EnterCriticalSection(bufferAccess);
+
+						ringBufPutChar(ringBuffer, recvbuf, velicinaPoruke);
+
+						LeaveCriticalSection(bufferAccess);
+
+						//printf("****************************: %s\n", ringBufGetChar(ringBuffer));
+						int operacija = *((int*)recvbuf);
+						printf("****************************: %d\n", operacija);
+						char *p = recvbuf;
+						int dr = *((int*)p);
+						printf("****************************: %d\n", dr);
+
+						ReleaseSemaphore(*Full, 1, NULL);
+
+						break;
+					}
 				}
 			}
 			else if (iResult == 0)
 			{
 				printf("Connection with client closed.\n");
+				konekcijaZatvorena = true;
 				closesocket(acceptedSocket);
 			}
 			else
@@ -467,34 +520,14 @@ DWORD WINAPI NitZaPrihvatanjeZahtevaKlijenta(LPVOID lpParam)
 				printf("recv failed with error: %d\n", WSAGetLastError());
 				closesocket(acceptedSocket);
 			}
-		} while (primljenZahtev == false);
+		} while (konekcijaZatvorena == false && *(parametri.ugasiServer) != true);
+
+	} while (*(parametri.ugasiServer) != true);
 
 
-		while (WaitForSingleObject(*Empty, INFINITE) == WAIT_OBJECT_0) {
-
-
-			EnterCriticalSection(bufferAccess);
-
-			ringBufPutChar(ringBuffer, recvbuf, velicinaPoruke);
-
-			LeaveCriticalSection(bufferAccess);
-
-			//printf("****************************: %s\n", ringBufGetChar(ringBuffer));
-			int operacija = *((int*)recvbuf);
-			printf("****************************: %d\n", operacija);
-			char *p = recvbuf;
-			int dr = *((int*)p);
-			printf("****************************: %d\n", dr);
-
-			ReleaseSemaphore(*Full, 1, NULL);
-
-			break;
-		}
-
-	} while (1);
-
+	printf("\nUgasena nit: NitZaPrihvatanjeZahtevaKlijenta\n");
 	closesocket(acceptedSocket);
-	WSACleanup();
+	//WSACleanup();
 
 	return 0;
 }
@@ -508,8 +541,12 @@ DWORD WINAPI NitZaIzvrsavanjeZahtevaKlijenta(LPVOID lpParam)
 	CRITICAL_SECTION *bufferAccess = parametri.bufferAccess;
 	HANDLE *Empty = parametri.Empty;
 	HANDLE *Full = parametri.Full;
+	HANDLE *FinishSignal = parametri.FinishSignal;
 
-	while (WaitForSingleObject(*Full, INFINITE) == WAIT_OBJECT_0) {
+	const int semaphore_num = 2;
+	HANDLE semaphores[semaphore_num] = { *FinishSignal, *Full };
+
+	while (WaitForMultipleObjects(semaphore_num, semaphores, FALSE, INFINITE) == WAIT_OBJECT_0 + 1) {
 
 		EnterCriticalSection(bufferAccess);
 		// Citanje kruznog bafera;
@@ -648,6 +685,40 @@ DWORD WINAPI NitZaIzvrsavanjeZahtevaKlijenta(LPVOID lpParam)
 						}
 					}
 				}
+				else if (operacija == 2) {
+					if (svePotvrdo) {
+						Obrisi(&(*(parametri.memorija)), indeks);
+
+						Memorija *memTemp = *(parametri.memorija);
+
+						printf("Memorija :\n");
+
+						while (memTemp != NULL) {
+							printf("Ime : %s\n", memTemp->ime);
+							printf("Prezime : %s\n", memTemp->prezime);
+							printf("Indeks : %d\n", memTemp->indeks);
+
+							memTemp = memTemp->sledeci;
+						}
+					}
+				}
+				else if (operacija == 3) {
+					if (svePotvrdo) {
+						Izmeni(&(*(parametri.memorija)), ime, prezime, indeks);
+
+						Memorija *memTemp = *(parametri.memorija);
+
+						printf("Memorija :\n");
+
+						while (memTemp != NULL) {
+							printf("Ime : %s\n", memTemp->ime);
+							printf("Prezime : %s\n", memTemp->prezime);
+							printf("Indeks : %d\n", memTemp->indeks);
+
+							memTemp = memTemp->sledeci;
+						}
+					}
+				}
 				free(podatak);
 			}
 
@@ -669,9 +740,45 @@ DWORD WINAPI NitZaIzvrsavanjeZahtevaKlijenta(LPVOID lpParam)
 					memTemp = memTemp->sledeci;
 				}
 			}
+			else if (operacija == 2) {
+				Obrisi(&(*(parametri.memorija)), indeks);
+
+				Memorija *memTemp = *(parametri.memorija);
+
+				printf("Memorija :\n");
+
+				while (memTemp != NULL) {
+					printf("Ime : %s\n", memTemp->ime);
+					printf("Prezime : %s\n", memTemp->prezime);
+					printf("Indeks : %d\n", memTemp->indeks);
+
+					memTemp = memTemp->sledeci;
+				}
+			}
+			else if (operacija == 3) {
+				Izmeni(&(*(parametri.memorija)), ime, prezime, indeks);
+
+				Memorija *memTemp = *(parametri.memorija);
+
+				printf("Memorija :\n");
+
+				while (memTemp != NULL) {
+					printf("Ime : %s\n", memTemp->ime);
+					printf("Prezime : %s\n", memTemp->prezime);
+					printf("Indeks : %d\n", memTemp->indeks);
+
+					memTemp = memTemp->sledeci;
+				}
+			}
 		}
 		printf("Izasao.\n");
+
+		if (*parametri.ugasiServer == true) {
+			break;
+		}
 	}
+
+	printf("\nUgasena nit: NitZaIzvrsavanjeZahtevaKlijenta\n");
 
 	return 0;
 }

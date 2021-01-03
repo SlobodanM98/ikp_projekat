@@ -22,6 +22,7 @@ struct ParametriServer {
 	int port;
 	char adresa[20];
 	bool *ugasiServer;
+	bool integrityUpdate;
 };
 
 DWORD WINAPI NitZaPrihvatanjeZahtevaServera(LPVOID lpParam) {
@@ -32,6 +33,8 @@ DWORD WINAPI NitZaPrihvatanjeZahtevaServera(LPVOID lpParam) {
 
 	int iResult;
 	char recvbuf[512];
+
+	bool izvrsenIntegrityUpdate = false;
 
 	connectSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
@@ -62,12 +65,22 @@ DWORD WINAPI NitZaPrihvatanjeZahtevaServera(LPVOID lpParam) {
 
 	char* poruka;
 
-	int velicina = strlen(parametri.adresa) + sizeof(int);
+	int velicina = strlen(parametri.adresa) + sizeof(int) * 2;
 	poruka = (char*)malloc(velicina);
-	*(int*)poruka = parametri.port;
+
+	if (parametri.integrityUpdate) {
+		*(int*)poruka = 1;
+		printf("Trazim update.\n");
+	}
+	else {
+		*(int*)poruka = 0;
+		izvrsenIntegrityUpdate = true;
+	}
+	
+	*(int*)(poruka + 4) = parametri.port;
 
 	for (int i = 0; i < strlen(parametri.adresa); i++) {
-		*(poruka + 4 + i) = parametri.adresa[i];
+		*(poruka + 8 + i) = parametri.adresa[i];
 	}
 
 	iResult = send(connectSocket, (char*)&velicina, 4, 0);
@@ -99,130 +112,180 @@ DWORD WINAPI NitZaPrihvatanjeZahtevaServera(LPVOID lpParam) {
 			continue;
 		}
 
-		iResult = recv(connectSocket, recvbuf, 4, 0);
-		if (iResult > 0)
-		{
-			int velicinaPoruke = *(int*)recvbuf;
-			printf("Velicina poruke je %d.\n", velicinaPoruke);
-			iResult = recv(connectSocket, recvbuf, velicinaPoruke, 0);
-			if (iResult > 4)
-			{
-				if (!izvrsenaFazaPrepare) {
-					printf("Primljena poruka od server-a: %s.\n", recvbuf);
+		if (!izvrsenIntegrityUpdate) {
+			izvrsenIntegrityUpdate = true;
+			iResult = recv(connectSocket, recvbuf, 8, 0);
+			if (iResult > 0) {
+				int velicinaPoruke = *(int*)recvbuf;
+				int brojClanova = *(int*)(recvbuf + 4);
+				printf("Velicina poruke je %d.\n", velicinaPoruke);
+				iResult = recv(connectSocket, recvbuf, velicinaPoruke, 0);
+				if (iResult > 0) {
+					char ime[20];
+					char prezime[20];
+					int velicinaPrethodnih = 0;
 
-					int primljenaOperacija = *(int*)recvbuf;
+					for (int i = 0; i < brojClanova; i++) {
+						int indeks = *(int*)(recvbuf + velicinaPrethodnih);
+						int duzinaImena = *(int*)(recvbuf + velicinaPrethodnih + 4);
+						int duzinaPrezimena = *(int*)(recvbuf + velicinaPrethodnih + 8);
 
-					switch (primljenaOperacija) {
-					case 1:
-						velicina = 5;
-						memcpy(operacija, "upis", velicina);
-						break;
-					case 2:
-						velicina = 9;
-						memcpy(operacija, "brisanje", velicina);
-						break;
-					case 3:
-						velicina = 7;
-						memcpy(operacija, "izmena", velicina);
-						break;
+						for (int j = 0; j < duzinaImena; j++) {
+							ime[j] = *(recvbuf + velicinaPrethodnih + 12 + j);
+						}
+						ime[duzinaImena] = '\0';
+
+						for (int j = 0; j < duzinaPrezimena; j++) {
+							prezime[j] = *(recvbuf + velicinaPrethodnih + duzinaImena + 12 + j);
+						}
+						prezime[duzinaPrezimena] = '\0';
+
+						Dodaj(&(*(parametri.memorija)), ime, prezime, indeks);
+
+						velicinaPrethodnih += duzinaImena + duzinaPrezimena + 3 * sizeof(int);
 					}
 
-					operacija[velicina] = '\0';
+					printf("Izvrsen update!\n");
+					Memorija *memTemp = *(parametri.memorija);
 
-					printf("Operacija je : %s\n", operacija);
+					printf("Memorija :\n");
 
-					duzinaImena = *(int*)(recvbuf + 4);
-					duzinaPrezimena = *(int*)(recvbuf + 8);
-					indeks = *(int*)(recvbuf + 12);
-					memcpy(ime, recvbuf + 16, duzinaImena);
-					ime[duzinaImena] = '\0';
-					memcpy(prezime, recvbuf + 16 + duzinaImena, duzinaPrezimena);
-					prezime[duzinaPrezimena] = '\0';
+					while (memTemp != NULL) {
+						printf("Ime : %s\n", memTemp->ime);
+						printf("Prezime : %s\n", memTemp->prezime);
+						printf("Indeks : %d\n", memTemp->indeks);
 
-					char *odgovor;
-					velicina = 4;
-					odgovor = (char*)malloc(velicina);
-
-					brojacOtkaza++;
-
-					if (brojacOtkaza % 3 == 0) {
-						*(int*)odgovor = 0;
+						memTemp = memTemp->sledeci;
 					}
-					else {
-						*(int*)odgovor = 1;
-					}
-
-					iResult = send(temp->socket, (char*)&velicina, 4, 0);
-					iResult = send(temp->socket, odgovor, velicina, 0);
-					free(odgovor);
-					izvrsenaFazaPrepare = true;
 				}
-				else {
-					printf("Primljena poruka od server-a: %s.\n", recvbuf);
-
-					char odgovor[20];
-					memcpy(odgovor, recvbuf, velicinaPoruke);
-					odgovor[velicinaPoruke] = '\0';
-
-					if (strcmp(odgovor, "commit") == 0) {
-
-
-
-						if (strcmp(operacija, "upis") == 0) {
-							Dodaj(&(*(parametri.memorija)), ime, prezime, indeks);
-						}
-						else if (strcmp(operacija, "brisanje") == 0) {
-							Obrisi(&(*(parametri.memorija)), indeks);
-						}
-						else if (strcmp(operacija, "izmena") == 0) {
-							Izmeni(&(*(parametri.memorija)), ime, prezime, indeks);
-						}
-
-						Memorija *memTemp = *(parametri.memorija);
-
-						printf("Memorija :\n");
-
-						while (memTemp != NULL) {
-							printf("Ime : %s\n", memTemp->ime);
-							printf("Prezime : %s\n", memTemp->prezime);
-							printf("Indeks : %d\n", memTemp->indeks);
-
-							memTemp = memTemp->sledeci;
-						}
-					}
-
-					duzinaImena = 0;
-					duzinaPrezimena = 0;
-					indeks = 0;
-					memset(ime, 0, sizeof(ime));
-					memset(prezime, 0, sizeof(prezime));
-					memset(operacija, 0, sizeof(operacija));
-
-					izvrsenaFazaPrepare = false;
-				}
-			}
-			else if(iResult > 0) 
-			{
-				printf("Primljena poruka od server-a: %s.\n", recvbuf);
-
-				int odgovor = *(int*)recvbuf;
-
-				if (odgovor == 1) {
-					strcpy(temp->messageBox, "spreman");
-				}
-				else {
-					strcpy(temp->messageBox, "nijeSpreman");
-				}
-
-				ReleaseSemaphore(temp->primljenOdgovor, 1, NULL);
-				printf("Oslobodjen semafor za port : %d\n", temp->port);
 			}
 		}
-		else if (iResult == 0)
-		{
-			printf("Connection with server closed.\n");
-			closesocket(connectSocket);
-			break;
+		else {
+			iResult = recv(connectSocket, recvbuf, 4, 0);
+			if (iResult > 0)
+			{
+				int velicinaPoruke = *(int*)recvbuf;
+				printf("Velicina poruke je %d.\n", velicinaPoruke);
+				iResult = recv(connectSocket, recvbuf, velicinaPoruke, 0);
+				if (iResult > 4)
+				{
+					if (!izvrsenaFazaPrepare) {
+						printf("Primljena poruka od server-a: %s.\n", recvbuf);
+
+						int primljenaOperacija = *(int*)recvbuf;
+
+						switch (primljenaOperacija) {
+						case 1:
+							velicina = 5;
+							memcpy(operacija, "upis", velicina);
+							break;
+						case 2:
+							velicina = 9;
+							memcpy(operacija, "brisanje", velicina);
+							break;
+						case 3:
+							velicina = 7;
+							memcpy(operacija, "izmena", velicina);
+							break;
+						}
+
+						operacija[velicina] = '\0';
+
+						printf("Operacija je : %s\n", operacija);
+
+						duzinaImena = *(int*)(recvbuf + 4);
+						duzinaPrezimena = *(int*)(recvbuf + 8);
+						indeks = *(int*)(recvbuf + 12);
+						memcpy(ime, recvbuf + 16, duzinaImena);
+						ime[duzinaImena] = '\0';
+						memcpy(prezime, recvbuf + 16 + duzinaImena, duzinaPrezimena);
+						prezime[duzinaPrezimena] = '\0';
+
+						char *odgovor;
+						velicina = 4;
+						odgovor = (char*)malloc(velicina);
+
+						brojacOtkaza++;
+
+						if (brojacOtkaza % 3 == 0) {
+							*(int*)odgovor = 0;
+						}
+						else {
+							*(int*)odgovor = 1;
+						}
+
+						iResult = send(temp->socket, (char*)&velicina, 4, 0);
+						iResult = send(temp->socket, odgovor, velicina, 0);
+						free(odgovor);
+						izvrsenaFazaPrepare = true;
+					}
+					else {
+						printf("Primljena poruka od server-a: %s.\n", recvbuf);
+
+						char odgovor[20];
+						memcpy(odgovor, recvbuf, velicinaPoruke);
+						odgovor[velicinaPoruke] = '\0';
+
+						if (strcmp(odgovor, "commit") == 0) {
+
+
+
+							if (strcmp(operacija, "upis") == 0) {
+								Dodaj(&(*(parametri.memorija)), ime, prezime, indeks);
+							}
+							else if (strcmp(operacija, "brisanje") == 0) {
+								Obrisi(&(*(parametri.memorija)), indeks);
+							}
+							else if (strcmp(operacija, "izmena") == 0) {
+								Izmeni(&(*(parametri.memorija)), ime, prezime, indeks);
+							}
+
+							Memorija *memTemp = *(parametri.memorija);
+
+							printf("Memorija :\n");
+
+							while (memTemp != NULL) {
+								printf("Ime : %s\n", memTemp->ime);
+								printf("Prezime : %s\n", memTemp->prezime);
+								printf("Indeks : %d\n", memTemp->indeks);
+
+								memTemp = memTemp->sledeci;
+							}
+						}
+
+						duzinaImena = 0;
+						duzinaPrezimena = 0;
+						indeks = 0;
+						memset(ime, 0, sizeof(ime));
+						memset(prezime, 0, sizeof(prezime));
+						memset(operacija, 0, sizeof(operacija));
+
+						izvrsenaFazaPrepare = false;
+					}
+				}
+				else if (iResult > 0)
+				{
+					printf("Primljena poruka od server-a: %s.\n", recvbuf);
+
+					int odgovor = *(int*)recvbuf;
+
+					if (odgovor == 1) {
+						strcpy(temp->messageBox, "spreman");
+					}
+					else {
+						strcpy(temp->messageBox, "nijeSpreman");
+					}
+
+					ReleaseSemaphore(temp->primljenOdgovor, 1, NULL);
+					printf("Oslobodjen semafor za port : %d\n", temp->port);
+				}
+			}
+			else if (iResult == 0)
+			{
+				printf("Connection with server closed.\n");
+				closesocket(connectSocket);
+				break;
+			}
 		}
 	} while (*(parametri.ugasiServer) != true);
 	printf("\nUgasena nit: NitZaPrihvatanjeZahtevaServera\n");
@@ -312,12 +375,59 @@ DWORD WINAPI NitZaOsluskivanjeServera(LPVOID lpParam) {
 
 				iResult = recv(acceptedSocket, recvbuf, velicina, 0);
 				if (iResult > 0) {
-					portServera = *(int*)recvbuf;
+					int integrityUpdate = *(int*)recvbuf;
+					portServera = *(int*)(recvbuf + 4);
 
-					for (int i = 0; i < velicina - 4; i++) {
-						adresa[i] = *(recvbuf + 4 + i);
+					for (int i = 0; i < velicina - 8; i++) {
+						adresa[i] = *(recvbuf + 8 + i);
 					}
-					adresa[velicina - 4] = '\0';
+					adresa[velicina - 8] = '\0';
+
+					if (integrityUpdate == 1) {
+						char *poruka;
+
+						Memorija *temp = *(parametri.memorija);
+						int brojKaraktera = 0;
+						int brojClanova = 0;
+
+						while (temp != NULL) {
+							brojKaraktera += strlen(temp->ime);
+							brojKaraktera += strlen(temp->prezime);
+							brojClanova++;
+							temp = temp->sledeci;
+						}
+
+						poruka = (char*)malloc(brojKaraktera + sizeof(int) * 3 * brojClanova);
+						int velicinaPoruke = 0;
+						temp = *(parametri.memorija);
+
+						for (int i = 0; i < brojClanova; i++) {
+							*((int*)(poruka + velicinaPoruke)) = temp->indeks;
+							*((int*)(poruka + velicinaPoruke + 4)) = strlen(temp->ime);
+							*((int*)(poruka + velicinaPoruke + 8)) = strlen(temp->prezime);
+
+							for (int j = 0; j < strlen(temp->ime); j++) {
+								*(poruka + velicinaPoruke + 12 + j) = temp->ime[j];
+							}
+
+							for (int j = 0; j < strlen(temp->prezime); j++) {
+								*(poruka + strlen(temp->ime) + velicinaPoruke + 12 + j) = temp->prezime[j];
+							}
+
+							velicinaPoruke += strlen(temp->ime) + strlen(temp->prezime) + sizeof(int) * 3;
+
+							temp = temp->sledeci;
+						}
+
+						char header[9];
+						*(int*)header = velicinaPoruke;
+						*(int*)(header + 4) = brojClanova;
+
+						iResult = send(acceptedSocket, header, 8, 0);
+						iResult = send(acceptedSocket, poruka, velicinaPoruke, 0);
+
+						free(poruka);
+					}
 
 					primljeno = true;
 				}
@@ -350,6 +460,7 @@ DWORD WINAPI NitZaOsluskivanjeServera(LPVOID lpParam) {
 			parametriServer.socket = NULL;
 			parametriServer.memorija = &(*(parametri.memorija));
 			parametriServer.ugasiServer = parametri.ugasiServer;
+			parametriServer.integrityUpdate = false;
 
 			printf("Drugi server se povezao sa mnom!\n");
 
@@ -440,7 +551,8 @@ DWORD WINAPI NitZaPrihvatanjeZahtevaKlijenta(LPVOID lpParam)
 			if (iResult == SOCKET_ERROR)
 			{
 				fprintf(stderr, "select failed with error: %ld\n", WSAGetLastError());
-				continue;
+				printf("Prekinuta veza sa klijentom!\n");
+				break;
 			}
 
 			if (iResult == 0)
@@ -531,8 +643,6 @@ DWORD WINAPI NitZaPrihvatanjeZahtevaKlijenta(LPVOID lpParam)
 
 	return 0;
 }
-
-
 
 DWORD WINAPI NitZaIzvrsavanjeZahtevaKlijenta(LPVOID lpParam)
 {

@@ -21,6 +21,7 @@ int  main(void)
 	int portKlijenta = 0;
 	char adresa[20];
 	bool ugasiServer = false;
+	bool integrityUpdate = true;
 
 	Server_info *glava;
 	glava = (Server_info*)malloc(sizeof(Server_info));
@@ -228,7 +229,7 @@ int  main(void)
 
 	closesocket(connectSocket);
 
-	RingBuffer *ringBuffer = (RingBuffer*)malloc(sizeof(RingBuffer));;
+	RingBuffer *ringBuffer = (RingBuffer*)malloc(sizeof(RingBuffer));
 	ringBuffer->head = 0;
 	ringBuffer->tail = 0;
 
@@ -288,6 +289,14 @@ int  main(void)
 		parametriServer.memorija = &glavaMemorije;
 		parametriServer.ugasiServer = &ugasiServer;
 
+		if (integrityUpdate) {
+			parametriServer.integrityUpdate = true;
+			integrityUpdate = false;
+		}
+		else {
+			parametriServer.integrityUpdate = false;
+		}
+
 		temp->hServerKonekcija = CreateThread(NULL, 0, &NitZaPrihvatanjeZahtevaServera, &parametriServer, 0, temp->serverID);
 
 		Sleep(100);
@@ -319,15 +328,17 @@ int  main(void)
 	temp = glava;
 
 	while (temp != NULL) {
-		CloseHandle(temp->hServerKonekcija);
+		SAFE_DELETE_HANDLE(temp->hServerKonekcija);
+		SAFE_DELETE_HANDLE(temp->primljenOdgovor);
 		temp = temp->sledeci;
 	}
-	_getch();
-	CloseHandle(hklijentkonekcija);
-	CloseHandle(hklijentIzvrsavanje);
-	CloseHandle(hServerKonekcija);
+
+	SAFE_DELETE_HANDLE(hklijentkonekcija);
+	SAFE_DELETE_HANDLE(hklijentIzvrsavanje);
+	SAFE_DELETE_HANDLE(hServerKonekcija);
 	SAFE_DELETE_HANDLE(Empty);
 	SAFE_DELETE_HANDLE(Full);
+	SAFE_DELETE_HANDLE(FinishSignal);
 
 	DeleteCriticalSection(&bufferAccess);
 
@@ -335,6 +346,24 @@ int  main(void)
 	closesocket(listenSocketServera);
 	closesocket(acceptedSocket);
 	WSACleanup(); 
+
+	temp = glava;
+
+	while ((temp = glava) != NULL) {
+		glava = glava->sledeci;
+		free(temp);
+	}
+
+	Memorija *tempMem = glavaMemorije;
+
+	while ((tempMem = glavaMemorije) != NULL) {
+		glavaMemorije = glavaMemorije->sledeci;
+		free(tempMem);
+	}
+
+	free(ringBuffer);
+
+	_getch();
 
 	return 0;
 }

@@ -79,16 +79,127 @@ int  main(void)
 
 	int poruka = 1;
 
-	iResult = send(connectSocket, (char*)&poruka, 4, 0);
+	PosaljiPoruku(&connectSocket, (char*)&poruka, 4);
+	/*iResult = send(connectSocket, (char*)&poruka, 4, 0);
 	if (iResult == SOCKET_ERROR)
 	{
 		printf("send failed with error: %d\n", WSAGetLastError());
 		closesocket(acceptedSocket);
 		WSACleanup();
 		return 1;
+	}*/
+
+
+	iResult = PrimiPoruku(&connectSocket, recvbuf, 8, &ugasiServer, false);
+	int velicinaPoruke = *(int*)recvbuf;
+	int brojElemenata = *(int*)(recvbuf + 4);
+	iResult = PrimiPoruku(&connectSocket, recvbuf, velicinaPoruke, &ugasiServer, false);
+
+	if (iResult > 7) {
+		char dobijenaAdresa[20];
+		int duzinaElementa = 0;
+		for (int i = 0; i < brojElemenata; i++) {
+			int dobijenPort = *(int*)(recvbuf + duzinaElementa);
+			int duzinaAdrese = *(int*)(recvbuf + duzinaElementa + 4);
+
+			for (int j = 0; j < duzinaAdrese; j++) {
+				dobijenaAdresa[j] = *((recvbuf + duzinaElementa) + 8 + j);
+			}
+			dobijenaAdresa[duzinaAdrese] = '\0';
+
+
+			Dodaj(&glava, dobijenaAdresa, dobijenPort);
+
+			duzinaElementa += 2 * sizeof(int) + duzinaAdrese;
+		}
 	}
 
-	bool primljenaPoruka = false;
+	sockaddr_in service;
+	service.sin_family = AF_INET;
+	service.sin_addr.s_addr = inet_addr("127.0.0.1");
+	service.sin_port = htons(0);
+
+	listenSocketKlijenta = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+	if (listenSocketKlijenta == INVALID_SOCKET)
+	{
+		printf("socket failed with error: %ld\n", WSAGetLastError());
+		WSACleanup();
+		return 1;
+	}
+
+	iResult = bind(listenSocketKlijenta, (SOCKADDR *)&service, sizeof(service));
+	if (iResult == SOCKET_ERROR)
+	{
+		printf("bind failed with error: %d\n", WSAGetLastError());
+		closesocket(listenSocketKlijenta);
+		WSACleanup();
+		return 1;
+	}
+
+	nonBlockingMode = 1;
+	iResult = ioctlsocket(listenSocketKlijenta, FIONBIO, &nonBlockingMode);
+
+
+
+	//Pravimo listenSoketServera da bi ga poslali masteru
+	service.sin_port = htons(0);
+
+	listenSocketServera = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+	if (listenSocketServera == INVALID_SOCKET)
+	{
+		printf("socket failed with error: %ld\n", WSAGetLastError());
+		WSACleanup();
+		return 1;
+	}
+
+	iResult = bind(listenSocketServera, (SOCKADDR *)&service, sizeof(service));
+	if (iResult == SOCKET_ERROR)
+	{
+		printf("bind failed with error: %d\n", WSAGetLastError());
+		closesocket(listenSocketServera);
+		WSACleanup();
+		return 1;
+	}
+
+	nonBlockingMode = 1;
+	iResult = ioctlsocket(listenSocketServera, FIONBIO, &nonBlockingMode);
+
+	//Slanje poruke masteru
+	//char* poruka;
+
+	int len = sizeof(myAddress);
+	getsockname(listenSocketServera, (sockaddr*)&myAddress, &len);
+	inet_ntop(AF_INET, &myAddress.sin_addr, adresa, sizeof(adresa));
+
+	portServera = ntohs(myAddress.sin_port);
+
+	getsockname(listenSocketKlijenta, (sockaddr*)&myAddress, &len);
+	inet_ntop(AF_INET, &myAddress.sin_addr, adresa, sizeof(adresa));
+
+	portKlijenta = ntohs(myAddress.sin_port);
+
+	int velicina = strlen(adresa) + 2 * sizeof(int);
+	char* poruka2 = (char*)malloc(velicina);
+	*(int*)poruka2 = portServera;
+	*((int*)(poruka2 + 4)) = portKlijenta;
+
+	for (int i = 0; i < strlen(adresa); i++) {
+		*(poruka2 + 2 * 4 + i) = adresa[i];
+	}
+	adresa[strlen(adresa)] = '\0';
+	printf("Port servera: %d\n", portServera);
+	printf("Port klijenta: %d\n", portKlijenta);
+
+	iResult = send(connectSocket, (char*)&velicina, 4, 0);
+	iResult = send(connectSocket, poruka2, velicina, 0);
+	free(poruka2);
+
+
+
+
+	/*bool primljenaPoruka = false;
 
 	do {
 
@@ -213,6 +324,8 @@ int  main(void)
 					*(poruka + 2 * 4 + i) = adresa[i];
 				}
 				adresa[strlen(adresa)] = '\0';
+				printf("Port servera: %d\n", portServera);
+				printf("Port klijenta: %d\n", portKlijenta);
 
 				iResult = send(connectSocket, (char*)&velicina, 4, 0);
 				iResult = send(connectSocket, poruka, velicina, 0);
@@ -225,7 +338,7 @@ int  main(void)
 			closesocket(connectSocket);
 			break;
 		}
-	} while (!primljenaPoruka);
+	} while (!primljenaPoruka);*/
 
 	closesocket(connectSocket);
 
@@ -314,16 +427,16 @@ int  main(void)
 
 	hServerKonekcija = CreateThread(NULL, 0, &NitZaOsluskivanjeServera, &parametri3, 0, &serverID);
 
+	WaitForSingleObject(hklijentkonekcija, INFINITE);
+	WaitForSingleObject(hklijentIzvrsavanje, INFINITE);
+	WaitForSingleObject(hServerKonekcija, INFINITE);
+
 	temp = glava;
 
 	while (temp != NULL) {
 		WaitForSingleObject(temp->hServerKonekcija, INFINITE);
 		temp = temp->sledeci;
 	}
-
-	WaitForSingleObject(hklijentkonekcija, INFINITE);
-	WaitForSingleObject(hklijentIzvrsavanje, INFINITE);
-	WaitForSingleObject(hServerKonekcija, INFINITE);
 
 	temp = glava;
 

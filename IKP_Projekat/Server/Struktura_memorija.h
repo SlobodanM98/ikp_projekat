@@ -58,6 +58,7 @@ void Izmeni(Memorija **glava, char* ime, char* prezime, int indeks) {
 			strcpy(temp->prezime, prezime);
 			return;
 		}
+		temp = temp->sledeci;
 	}
 }
 

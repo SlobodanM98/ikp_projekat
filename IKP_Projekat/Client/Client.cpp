@@ -55,20 +55,22 @@ int main(void)
 
 	int poruka = 0;
 
-	iResult = send(connectSocket, (char*)&poruka, 4, 0);
+	PosaljiPoruku(&connectSocket, (char*)&poruka, 4);
+	/*iResult = send(connectSocket, (char*)&poruka, 4, 0);
 	if (iResult == SOCKET_ERROR)
 	{
 		printf("send failed with error: %d\n", WSAGetLastError());
 		closesocket(acceptedSocket);
 		WSACleanup();
 		return 1;
-	}
+	}*/
 
 
-	bool primljenaPoruka = false;
+	//bool primljenaPoruka = false;
 	int dobijenPort = 0;
+	char dobijenaAdresa[20];
 
-	do {
+	/*do {
 
 		iResult = Selekt(&connectSocket);
 
@@ -98,7 +100,6 @@ int main(void)
 
 				if (iResult > 7) {
 					dobijenPort = *(int*)recvbuf;
-					char dobijenaAdresa[20];
 
 					for (int i = 0; i < velicinaPoruke - 4; i++) {
 						dobijenaAdresa[i] = *(recvbuf + 4 + i);
@@ -117,9 +118,24 @@ int main(void)
 			closesocket(connectSocket);
 			break;
 		}
-	} while (!primljenaPoruka && dobijenPort == 0);
+	} while (!primljenaPoruka && dobijenPort == 0);*/
 
-	
+	iResult = PrimiPoruku(&connectSocket, recvbuf, 8);
+	int velicinaPoruke = *(int*)recvbuf;
+	do {
+		iResult = PrimiPoruku(&connectSocket, recvbuf, velicinaPoruke);
+	} while (iResult < 8);
+
+	dobijenPort = *(int*)recvbuf;
+
+	for (int i = 0; i < velicinaPoruke - 4; i++) {
+		dobijenaAdresa[i] = *(recvbuf + 4 + i);
+	}
+	dobijenaAdresa[velicinaPoruke - 4] = '\0';
+
+	printf("Port je : %d\n", dobijenPort);
+	printf("Adresa je : %s\n", dobijenaAdresa);
+
 
 	connectSocket2 = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
@@ -225,16 +241,21 @@ int main(void)
 			memcpy(zahtev + 16 + duzinaImena, prezime, duzinaPrezimena);
 		}
 		//int duzinaZahteva = 11;
-		iResult = send(connectSocket2, (char *)&duzinaZahteva, 4, 0);
+
+		PosaljiPoruku(&connectSocket2, (char *)&duzinaZahteva, 4);
+
+		/*iResult = send(connectSocket2, (char *)&duzinaZahteva, 4, 0);
 		if (iResult == SOCKET_ERROR)
 		{
 			printf("send failed with error: %d\n", WSAGetLastError());
 			closesocket(acceptedSocket);
 			WSACleanup();
 			return 1;
-		}
+		}*/
 		//char p[12] = "Hello World";
-		iResult = send(connectSocket2, zahtev, duzinaZahteva, 0);
+
+		PosaljiPoruku(&connectSocket2, zahtev, duzinaZahteva);
+		/*iResult = send(connectSocket2, zahtev, duzinaZahteva, 0);
 
 		if (iResult == SOCKET_ERROR)
 		{
@@ -242,7 +263,7 @@ int main(void)
 			closesocket(acceptedSocket);
 			WSACleanup();
 			return 1;
-		}
+		}*/
 
 		free(zahtev);
 	} while (true);

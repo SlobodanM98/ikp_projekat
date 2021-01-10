@@ -121,7 +121,7 @@ int  main(void)
 		bool klijent = false;
 
 		//Primanje flega da znamo da li je klijent(0) ili server(1)
-		do {
+		/*do {
 
 			iResult = Selekt(&acceptedSocket);
 
@@ -150,7 +150,16 @@ int  main(void)
 					klijent = true;
 				}
 			}
-		} while (!primljeno);
+		} while (!primljeno);*/
+
+		PrimiPoruku(&acceptedSocket, recvbuf, 4);
+		int fleg = *(int*)recvbuf;
+		primljeno = true;
+		printf("Prikljucio se: %d\n", fleg);
+		//0 znaci da je klijent
+		if (fleg == 0) {
+			klijent = true;
+		}
 
 		int brojClanova = BrojClanova(glava);
 		int velicinaPoruke = 0;
@@ -225,8 +234,11 @@ int  main(void)
 		char prvaPoruka[9];
 		*(int*)prvaPoruka = velicinaPoruke;
 		*(int*)(prvaPoruka + 4) = brojClanova;
-		iResult = send(acceptedSocket, prvaPoruka, 8, 0);
-		iResult = send(acceptedSocket, poruka, velicinaPoruke, 0);
+		//iResult = send(acceptedSocket, prvaPoruka, 8, 0);
+		//iResult = send(acceptedSocket, poruka, velicinaPoruke, 0);
+
+		iResult = PosaljiPoruku(&acceptedSocket, prvaPoruka, 8);
+		iResult = PosaljiPoruku(&acceptedSocket, poruka, velicinaPoruke);
 
 		free(poruka);
 
@@ -240,7 +252,41 @@ int  main(void)
 
 		primljeno = false;
 
-		do {
+		if (klijent != true) {
+			iResult = PrimiPoruku(&acceptedSocket, recvbuf, 4);
+			int velicina = *(int*)recvbuf;
+			iResult = PrimiPoruku(&acceptedSocket, recvbuf, velicina);
+
+			char adresa[20];
+			printf("Poruka je : %s\n", recvbuf);
+			int portServera = *(int*)recvbuf;                //Port servera je prvi u recfbuf
+			int portKlijenta = *((int*)(recvbuf + 4));
+
+			for (int i = 0; i < velicina - 2 * 4; i++) {
+				adresa[i] = *(recvbuf + 2 * 4 + i);
+			}
+			adresa[velicina - 2 * 4] = '\0';
+
+			printf("Port servera je : %d\n", portServera);
+			printf("Port klijenta je : %d\n", portKlijenta);
+			printf("Adresa je : %s\n", adresa);
+			primljeno = true;
+
+			Dodaj(&glava, adresa, portServera, portKlijenta);
+			praznaLista = false;
+
+			Clan *temp = glava;
+
+			printf("Lista :\n");
+			while (temp != NULL) {
+				printf("Adresa : %s\n", temp->ipAdresa);
+				printf("Port Servera : %d\n", temp->portServera);
+				printf("Port Klijenta : %d\n\n", temp->portKlijenta);
+				temp = temp->sledeci;
+			}
+		}
+
+		/*do {
 			//ako je klijent onda ne prima ip adresu i port
 			if (klijent == true) {
 				break;
@@ -300,7 +346,7 @@ int  main(void)
 
 				}
 			}
-		} while (!primljeno);
+		} while (!primljeno);*/
 	} while (1);
 
 	iResult = shutdown(acceptedSocket, SD_SEND);

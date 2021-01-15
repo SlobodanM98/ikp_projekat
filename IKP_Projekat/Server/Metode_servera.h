@@ -30,13 +30,23 @@ bool InitializeWindowsSockets()
 
 int PrimiPoruku(SOCKET *socket, char *poruka, int duzinaPoruke, bool* ugasi, bool integrityUpdate) {
 	int primljeniBajtovi = 0;
-	char recvbuf[100];
+	int duzina = duzinaPoruke;
+	if (duzinaPoruke > 100) {
+		duzina = 100;
+	}
+	char recvbuf[512];
 	do {
 		int iResult = Selekt(socket);
 
 		if (iResult == SOCKET_ERROR)
 		{
 			fprintf(stderr, "select failed with error: %ld\n", WSAGetLastError());
+			static char message[256] = { 0 };
+			FormatMessage(
+				FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+				0, WSAGetLastError(), 0, message, 256, 0);
+			printf("The last error message is: %s", message);
+			//_getch();
 			break;
 		}
 
@@ -55,7 +65,11 @@ int PrimiPoruku(SOCKET *socket, char *poruka, int duzinaPoruke, bool* ugasi, boo
 			}
 		}
 
-		iResult = recv(*socket, recvbuf, duzinaPoruke, 0);
+		if (duzinaPoruke - primljeniBajtovi < 100) {
+			duzina = duzinaPoruke - primljeniBajtovi;
+		}
+
+		iResult = recv(*socket, recvbuf, duzina, 0);
 		if (iResult > 0)
 		{
 			memcpy(poruka + primljeniBajtovi, recvbuf, iResult);
@@ -70,6 +84,11 @@ int PrimiPoruku(SOCKET *socket, char *poruka, int duzinaPoruke, bool* ugasi, boo
 			closesocket(*socket);
 			break;
 		}
+		else if (iResult == -1) {
+			//printf("Primio -1\n");
+			Sleep(200);
+			//_getch();
+		}
 	} while (primljeniBajtovi < duzinaPoruke);
 
 	return primljeniBajtovi;
@@ -77,19 +96,28 @@ int PrimiPoruku(SOCKET *socket, char *poruka, int duzinaPoruke, bool* ugasi, boo
 
 int PosaljiPoruku(SOCKET *socket, char *poruka, int duzinaPoruke) {
 	int poslatiBajtovi = 0;
+	int duzina = duzinaPoruke;
+	if (duzinaPoruke > 100) {
+		duzina = 100;
+	}
 	do {
 		if (poslatiBajtovi == duzinaPoruke) {
 			break;
 		}
+		if (duzinaPoruke - poslatiBajtovi < 100) {
+			duzina = duzinaPoruke - poslatiBajtovi;
+		}
 		//char bajt = *(poruka + poslatiBajtovi);
-		int iResult = send(*socket, poruka + poslatiBajtovi, 1, 0);
+		int iResult = send(*socket, poruka + poslatiBajtovi, duzina, 0);
 		if (iResult == SOCKET_ERROR)
 		{
 			printf("send failed with error: %d\n", WSAGetLastError());
-			closesocket(*socket);
-			return -1;
+			//closesocket(*socket);
+			Sleep(200);
 		}
-		poslatiBajtovi++;
+		else {
+			poslatiBajtovi += iResult;
+		}
 	} while (poslatiBajtovi < duzinaPoruke);
 
 	return poslatiBajtovi;

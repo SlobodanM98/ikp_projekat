@@ -1,8 +1,8 @@
 #pragma once
 
 typedef struct memorija {
-	char ime[20];
-	char prezime[20];
+	char *ime;
+	char *prezime;
 	int indeks;
 	struct memorija *sledeci;
 }Memorija;
@@ -14,8 +14,12 @@ void Inicijalizacija(Memorija **head) {
 void Dodaj(Memorija **glava, char* ime, char* prezime, int indeks) {
 	Memorija *novi;
 	novi = (Memorija*)malloc(sizeof(Memorija));
-	strcpy(novi->ime, ime);
-	strcpy(novi->prezime, prezime);
+	novi->ime = (char*)malloc(strlen(ime) + 1);
+	memcpy(novi->ime, ime, strlen(ime));
+	novi->ime[strlen(ime)] = '\0';
+	novi->prezime = (char*)malloc(strlen(prezime) + 1);
+	memcpy(novi->prezime, prezime, strlen(prezime));
+	novi->prezime[strlen(prezime)] = '\0';
 	novi->indeks = indeks;
 
 	if (*glava == NULL) {

@@ -33,6 +33,10 @@ bool InitializeWindowsSockets()
 
 int PrimiPoruku(SOCKET *socket, char *poruka, int duzinaPoruke) {
 	int primljeniBajtovi = 0;
+	int duzina = duzinaPoruke;
+	if (duzinaPoruke > 100) {
+		duzina = 100;
+	}
 	char recvbuf[512];
 	do {
 		int iResult = Selekt(socket);
@@ -45,12 +49,16 @@ int PrimiPoruku(SOCKET *socket, char *poruka, int duzinaPoruke) {
 
 		if (iResult == 0)
 		{
-			printf("Ceka se odgovor master-a...\n");
+			printf("Ceka se odgovor...\n");
 			Sleep(CLIENT_SLEEP_TIME);
 			continue;
 		}
 
-		iResult = recv(*socket, recvbuf, duzinaPoruke, 0);
+		if (duzinaPoruke - primljeniBajtovi < 100) {
+			duzina = duzinaPoruke - primljeniBajtovi;
+		}
+
+		iResult = recv(*socket, recvbuf, duzina, 0);
 		if (iResult > 0)
 		{
 			printf("Poruka je: %s.\n", recvbuf);
@@ -70,9 +78,16 @@ int PrimiPoruku(SOCKET *socket, char *poruka, int duzinaPoruke) {
 
 int PosaljiPoruku(SOCKET *socket, char *poruka, int duzinaPoruke) {
 	int poslatiBajtovi = 0;
+	int duzina = duzinaPoruke;
+	if (duzinaPoruke > 100) {
+		duzina = 100;
+	}
 	do {
 		char bajt = *(poruka + poslatiBajtovi);
-		int iResult = send(*socket, poruka + poslatiBajtovi, 1, 0);
+		if (duzinaPoruke - poslatiBajtovi < 100) {
+			duzina = duzinaPoruke - poslatiBajtovi;
+		}
+		int iResult = send(*socket, poruka + poslatiBajtovi, duzina, 0);
 		if (iResult == SOCKET_ERROR)
 		{
 			printf("send failed with error: %d\n", WSAGetLastError());
@@ -80,7 +95,7 @@ int PosaljiPoruku(SOCKET *socket, char *poruka, int duzinaPoruke) {
 			WSACleanup();
 			return 1;
 		}
-		poslatiBajtovi++;
+		poslatiBajtovi += iResult;
 	} while (poslatiBajtovi < duzinaPoruke);
 
 	return poslatiBajtovi;

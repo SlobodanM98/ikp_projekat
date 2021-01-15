@@ -1,23 +1,30 @@
 #pragma once
 
-#define RING_SIZE 20
-#define MESSAGEBOX_SIZE (4 + 4 + 20 + 20 + 1)
+#define RING_SIZE 10
+#define MESSAGEBOX_SIZE (1000000)
 
 
 // Kruzni bafer - FIFO
 struct RingBuffer {
 	unsigned int tail;
 	unsigned int head;
-	char data[RING_SIZE][MESSAGEBOX_SIZE];
+	unsigned int alociranaMemorija;
+	unsigned int zauzetaMemorija;
+	unsigned int brojDozvoljenihPoruka;
+	char *data;
+	char *velicinaPrethodnihPoruka;
 };
 // Operacije za rad sa kruznim baferom
 char* ringBufGetChar(RingBuffer *apBuffer) {
 	int index;
 	index = apBuffer->head;
-	apBuffer->head = (apBuffer->head + 1) % RING_SIZE;
-	return &(apBuffer->data[index][0]);
+	apBuffer->head = apBuffer->head + 1;
+	int duzinaPrethodnih = *((int*)apBuffer->velicinaPrethodnihPoruka + index);
+	return &(*(apBuffer->data + duzinaPrethodnih));
 }
 void ringBufPutChar(RingBuffer *apBuffer, const char  *c, int velicinaPoruke) {
-	memcpy(apBuffer->data[apBuffer->tail], c, velicinaPoruke);
-	apBuffer->tail = (apBuffer->tail + 1) % RING_SIZE;
+	memcpy(apBuffer->data + apBuffer->zauzetaMemorija, c, velicinaPoruke);
+	memcpy(apBuffer->velicinaPrethodnihPoruka + (apBuffer->tail * sizeof(int)), (char *)&(apBuffer->zauzetaMemorija), sizeof(int));
+	apBuffer->zauzetaMemorija += velicinaPoruke;
+	apBuffer->tail = apBuffer->tail + 1;
 }
